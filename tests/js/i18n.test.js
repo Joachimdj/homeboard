@@ -67,14 +67,16 @@ test("every translation key used in the source exists", () => {
     "type.": ["task", "bug", "story", "epic"],
     "priority.": ["highest", "high", "medium", "low", "lowest"],
     "category.": ["todo", "in_progress", "done"],
-    "field.": ["summary", "description", "type", "priority", "assignee", "labels", "due", "status", "parent"],
+    "field.": ["summary", "description", "type", "priority", "assignee", "labels", "due", "status", "parent", "checklist", "attachments"],
     "lanes.": ["none", "assignee", "priority"],
     "list.col.": ["key", "summary", "status", "priority", "assignee", "due", "updated"],
     "settings.tab.": ["general", "statuses", "labels", "recurring"],
-    "tab.": ["summary", "board", "backlog", "list", "comments", "history"],
+    "tab.": ["summary", "board", "backlog", "list", "insights", "comments", "history"],
+    "insights.feature.": ["defaults", "patterns", "workload", "health", "rhythm"],
+    "insights.data.": ["defaults", "patterns", "workload", "health", "rhythm"],
     "template.": ["household", "software", "blank"],
     "unit.": ["day", "week", "month", "year"],
-    "editor.": ["project", "title", "show_backlog", "swimlanes", "filter", "kiosk", "max_height", "projects", "show_people", "show_health"],
+    "editor.": ["project", "title", "show_backlog", "swimlanes", "filter", "kiosk", "max_height", "projects", "show_people", "show_health", "show_insights"],
   };
   for (const [prefix, names] of Object.entries(families)) for (const name of names) assert.ok(`${prefix}${name}` in en, `${prefix}${name}`);
   for (const unit of ["day", "week", "month", "year"]) for (const suffix of ["one", "other"]) assert.ok(`repeat.${unit}_${suffix}` in en);

@@ -58,6 +58,16 @@
     </label>
     <label>Latency <input type="number" id="latency" value="25" min="0" step="50" style="width:64px"> ms</label>
     <label>Push lag <input type="number" id="pushlag" value="0" min="0" step="50" style="width:64px"> ms</label>
+    <span>Learning:
+      <label><input type="checkbox" data-learn="defaults" checked> defaults</label>
+      <label><input type="checkbox" data-learn="patterns" checked> patterns</label>
+      <label><input type="checkbox" data-learn="workload" checked> workload</label>
+      <label><input type="checkbox" data-learn="health" checked> health</label>
+      <label><input type="checkbox" data-learn="rhythm"> rhythm</label>
+    </span>
+    <label><input type="checkbox" id="attachments" checked> Attachments</label>
+    <label>max <input type="number" id="maxmb" value="10" min="0.001" step="any" style="width:56px"> MB</label>
+    <button id="expire" title="Revoke the signed file URLs handed out so far, like the one hour expiry">Expire file URLs</button>
     <button id="reset">Reset demo data</button>
   </div>
 
@@ -150,18 +160,26 @@
     };
     $("latency").onchange = (e) => { mock.latency = Number(e.target.value); };
     $("pushlag").onchange = (e) => { mock.pushDelay = Number(e.target.value); };
+    for (const box of document.querySelectorAll("[data-learn]")) {
+      box.onchange = () => backend.setSettings({ learning: { [box.dataset.learn]: box.checked } });
+    }
+    $("attachments").onchange = (e) => backend.setSettings({ attachments: { enabled: e.target.checked } });
+    $("maxmb").onchange = (e) => backend.setSettings({ attachments: { max_mb: Number(e.target.value) } });
+    $("expire").onclick = () => backend.files.expire();
     $("reset").onclick = () => {
       const fresh = new MockBackend();
-      backend.projects = fresh.projects;
-      backend.issues = fresh.issues;
-      backend.recurring = fresh.recurring;
-      backend.counter = fresh.counter;
+      Object.assign(backend, { projects: fresh.projects, issues: fresh.issues, recurring: fresh.recurring, counter: fresh.counter, suggestions: fresh.suggestions, files: fresh.files });
+      backend.handled = new Set();
+      backend.forgotten = new Set();
       backend.changed();
     };
 
     if (query.has("dark")) { $("dark").checked = true; document.documentElement.dataset.theme = "dark"; }
     if (query.get("lang")) { $("language").value = query.get("lang"); document.documentElement.lang = query.get("lang"); }
     if (query.has("kiosk")) $("kiosk").checked = true;
+    if (query.has("nolearn")) for (const box of document.querySelectorAll("[data-learn]")) { box.checked = false; box.onchange(); }
+    if (query.has("learn")) for (const feature of query.get("learn").split(",")) { const box = document.querySelector(`[data-learn="${feature}"]`); if (box) { box.checked = true; box.onchange(); } }
+    if (query.has("noattach")) { $("attachments").checked = false; $("attachments").onchange({ target: $("attachments") }); }
     // Helpers for driving the page from a script (synthetic pointer events, card lookup).
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const pointer = (type, target, x, y, extra = {}) =>

@@ -55,4 +55,5 @@ test("describeActivity", () => {
   assert.equal(describeActivity({ kind: "updated", field: "priority", from: "medium", to: "high" }, index), "changed Priority from Medium to High");
   assert.equal(describeActivity({ kind: "assigned", field: "assignee", from: null, to: "person.joachim" }, index), "changed the assignee from none to Joachim");
   assert.equal(describeActivity({ kind: "created" }, index), "created the issue");
+  assert.equal(describeActivity({ kind: "updated", field: "checklist", from: "2/5", to: "3/5" }, index), "changed Checklist from 2/5 to 3/5");
 });

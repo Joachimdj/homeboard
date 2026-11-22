@@ -16,25 +16,79 @@
   "options": {
     "step": {
       "init": {
+        "title": "Homeboard",
+        "description": "Choose what to change. Each section saves when you submit it.",
+        "menu_options": {
+          "general": "General",
+          "alerts": "Household alerts",
+          "people": "People and push",
+          "files": "Photos, files and Assist",
+          "health": "Smart home health",
+          "learning": "Learning"
+        }
+      },
+      "general": {
         "title": "Homeboard: general",
         "data": {
           "due_soon_hours": "Due soon window (hours)",
           "auto_archive_done_days": "Archive done issues after (days, 0 = never)",
+          "checklist_autodone": "Move an issue to Done when its checklist is complete",
           "panel_title": "Sidebar title",
           "panel_icon": "Sidebar icon",
           "panel_admin_only": "Only show the panel to administrators",
           "tracked_people": "People with their own sensors (empty = everyone)"
         }
       },
-      "notifications": {
-        "title": "Homeboard: notifications",
-        "description": "Push notifications go to the notify services you pick, for example notify.mobile_app_your_phone. Anything fancier is a normal automation on the homeboard_* events.",
+      "alerts": {
+        "title": "Homeboard: household alerts",
+        "description": "Push notifications to the notify services you pick, for example notify.mobile_app_your_phone. Pushes to the person an issue is assigned to are under People and push.",
         "data": {
           "notify_services": "Notify services",
           "notify_done": "Tell me when an issue is done",
           "notify_overdue": "Tell me when an issue is overdue",
           "notify_due_soon": "Tell me when an issue is due soon",
           "notify_health": "Tell me about new high-priority auto issues"
+        }
+      },
+      "people": {
+        "title": "Homeboard: people and push",
+        "description": "Each person is notified on their own phone about issues that concern them. Non-urgent pushes wait during quiet hours (and while someone is away, if rhythm learning is on). Times are HH:MM.",
+        "data": {
+          "push_assigned": "Tell people when an issue is assigned to them",
+          "push_comment": "Tell people about comments on their issues",
+          "push_overdue": "Tell people when their issues are overdue or due soon",
+          "push_reported_done": "Tell people when an issue they reported is done",
+          "digest_enabled": "Send a morning digest",
+          "digest_time": "Digest time",
+          "quiet_start": "Quiet hours start",
+          "quiet_end": "Quiet hours end"
+        }
+      },
+      "person": {
+        "title": "Phone for {person}",
+        "description": "Which notify service reaches {person}? Leave empty to detect it from their device tracker.",
+        "data": {
+          "notify_service": "Notify service"
+        }
+      },
+      "files": {
+        "title": "Homeboard: photos, files and Assist",
+        "description": "Attachments are stored privately in config/homeboard_files. Assist sentences are written to homeboard.yaml files in config/custom_sentences (one folder per language) and removed again when switched off.",
+        "data": {
+          "attachments_enabled": "Allow photos and PDFs on issues",
+          "max_upload_mb": "Largest upload (MB)",
+          "assist_sentences": "Install Assist sentences"
+        }
+      },
+      "learning": {
+        "title": "Homeboard: learning",
+        "description": "Homeboard learns from the board and suggests things (you always decide). Everything stays inside Home Assistant and can be forgotten on the Insights page. Rhythm reads whether each person is home or away, hour by hour, and is off until you switch it on.",
+        "data": {
+          "learn_defaults": "Smart defaults (assignee, labels, priority, due date)",
+          "learn_patterns": "Spot repeating tasks and suggest recurring chores",
+          "learn_workload": "Workload and speed",
+          "learn_health": "Sensor rhythms and noisy faults",
+          "learn_rhythm": "Everyday rhythm (home / away by hour)"
         }
       },
       "health": {
@@ -87,6 +141,9 @@
       },
       "auto_issues": {
         "name": "Auto-generated issues"
+      },
+      "suggestions": {
+        "name": "Suggestions"
       },
       "total_last_activity": {
         "name": "Last activity"
@@ -155,6 +212,15 @@
         "household": "Household",
         "software": "Software",
         "blank": "Blank"
+      }
+    },
+    "learning_feature": {
+      "options": {
+        "defaults": "Smart defaults",
+        "patterns": "Patterns",
+        "workload": "Workload",
+        "health": "Health",
+        "rhythm": "Everyday rhythm"
       }
     }
   },
@@ -670,6 +736,132 @@
         "dry_run": {
           "name": "Dry run",
           "description": "Only report what would happen, change nothing."
+        }
+      }
+    },
+    "add_checklist_item": {
+      "name": "Add checklist item",
+      "description": "Add an item to the checklist of an issue.",
+      "fields": {
+        "issue": {
+          "name": "Issue",
+          "description": "Issue key (HOME-12) or id. Leave empty when you use project + dedupe key."
+        },
+        "project": {
+          "name": "Project",
+          "description": "Project key or id. Needed together with the dedupe key."
+        },
+        "dedupe_key": {
+          "name": "Dedupe key",
+          "description": "Find the issue by the dedupe key it was created with (newest open issue of the project)."
+        },
+        "text": {
+          "name": "Text",
+          "description": "The item."
+        }
+      }
+    },
+    "check_item": {
+      "name": "Check checklist item",
+      "description": "Tick (or untick) a checklist item by its text or id.",
+      "fields": {
+        "issue": {
+          "name": "Issue",
+          "description": "Issue key (HOME-12) or id. Leave empty when you use project + dedupe key."
+        },
+        "project": {
+          "name": "Project",
+          "description": "Project key or id. Needed together with the dedupe key."
+        },
+        "dedupe_key": {
+          "name": "Dedupe key",
+          "description": "Find the issue by the dedupe key it was created with (newest open issue of the project)."
+        },
+        "item": {
+          "name": "Item",
+          "description": "Item text or id."
+        },
+        "done": {
+          "name": "Done",
+          "description": "True to tick (default), false to untick."
+        }
+      }
+    },
+    "remove_checklist_item": {
+      "name": "Remove checklist item",
+      "description": "Remove an item from the checklist of an issue.",
+      "fields": {
+        "issue": {
+          "name": "Issue",
+          "description": "Issue key (HOME-12) or id. Leave empty when you use project + dedupe key."
+        },
+        "project": {
+          "name": "Project",
+          "description": "Project key or id. Needed together with the dedupe key."
+        },
+        "dedupe_key": {
+          "name": "Dedupe key",
+          "description": "Find the issue by the dedupe key it was created with (newest open issue of the project)."
+        },
+        "item": {
+          "name": "Item",
+          "description": "Item text or id."
+        }
+      }
+    },
+    "attach_camera_snapshot": {
+      "name": "Attach camera snapshot",
+      "description": "Take a still picture from a camera and attach it to an issue.",
+      "fields": {
+        "issue": {
+          "name": "Issue",
+          "description": "Issue key (HOME-12) or id. Leave empty when you use project + dedupe key."
+        },
+        "project": {
+          "name": "Project",
+          "description": "Project key or id. Needed together with the dedupe key."
+        },
+        "dedupe_key": {
+          "name": "Dedupe key",
+          "description": "Find the issue by the dedupe key it was created with (newest open issue of the project)."
+        },
+        "camera": {
+          "name": "Camera",
+          "description": "The camera to take the picture from."
+        }
+      }
+    },
+    "suggest": {
+      "name": "Suggest defaults",
+      "description": "Return what Homeboard has learned for a title: assignee, labels, priority, due offset (or null).",
+      "fields": {
+        "text": {
+          "name": "Text",
+          "description": "Title or quick-add line."
+        },
+        "project": {
+          "name": "Project",
+          "description": "Project key or id."
+        }
+      }
+    },
+    "send_digest": {
+      "name": "Send digest now",
+      "description": "Push a person's open and overdue issues to their phone right away. Nothing is sent when they have nothing open.",
+      "fields": {
+        "person": {
+          "name": "Person",
+          "description": "Leave empty for everyone."
+        }
+      }
+    },
+    "forget_learning": {
+      "name": "Forget what was learned",
+      "description": "Forget what a learning feature has stored (sensor rhythms, home / away rhythm, dismissed suggestions). Defaults, patterns and workload are computed live from the board.",
+      "fields": {
+        "feature": {
+          "name": "Feature",
+          "description": "Leave empty for everything."
         }
       }
     }

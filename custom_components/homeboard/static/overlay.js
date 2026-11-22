@@ -338,6 +338,7 @@ export const overlay = {
   menu: openMenu,
   closeMenu,
   float,
+  isTop: (entry) => state.dialogs[state.dialogs.length - 1] === entry && !state.menu,
   get menuOpen() {
     return Boolean(state.menu);
   },

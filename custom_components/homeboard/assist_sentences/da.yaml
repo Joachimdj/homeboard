@@ -1,0 +1,67 @@
+# Managed by Homeboard, do not edit
+# Installed by the "Install Assist sentences" option of Homeboard and removed again when the option is
+# switched off or the integration is removed. To change the wording, copy this file (without the line
+# above) to another name in this folder, edit the copy and then switch the option off.
+language: "da"
+intents:
+  HomeboardAdd:
+    data:
+      - sentences:
+          - "(tilføj|tilføje|læg|sæt) {hb_item:item} (til|på) [<hb_den>] <hb_board>"
+          - "(tilføj|tilføje|læg|sæt) {hb_item:item} (til|på) [<hb_den>] {hb_project:project} (tavle|tavlen|board|boardet|projekt|projektet)"
+          - "(tilføj|tilføje|læg|sæt) {hb_item:item} (til|på) {hb_project:project}tavlen"
+          - "(tilføj|tilføje|læg|sæt) {hb_item:item} (til|på) (projekt|projektet) {hb_project:project}"
+  HomeboardOverdue:
+    data:
+      - sentences:
+          - "hvad er [der] <hb_overdue> [på [<hb_den>] <hb_board>]"
+          - "hvilke (opgaver|sager|ting) er <hb_overdue> [på [<hb_den>] <hb_board>]"
+          - "er der noget <hb_overdue> [på [<hb_den>] <hb_board>]"
+          - "har (vi|jeg) noget <hb_overdue>"
+          - "hvor mange (opgaver|sager) er <hb_overdue>"
+          - "vis [mig] [de] <hb_overdue> (opgaver|sager)"
+  HomeboardMine:
+    data:
+      - sentences:
+          - "hvad (står der|er der|er) på min (liste|opgaveliste|tavle)"
+          - "hvad arbejder jeg på"
+          - "hvad skal jeg (lave|nå)"
+          - "hvad har jeg at lave"
+          - "hvad er mine (opgaver|sager)"
+          - "vis [mig] mine (opgaver|sager|liste)"
+          - "hvilke (opgaver|sager) har jeg"
+  HomeboardPerson:
+    data:
+      - sentences:
+          - "hvad arbejder {hb_person:person} på"
+          - "hvad har {hb_person:person} at lave"
+          - "hvad (står der|er der|er) på {hb_person:person}[s] (liste|opgaveliste)"
+          - "hvilke (opgaver|sager) har {hb_person:person}"
+  HomeboardDone:
+    data:
+      - sentences:
+          - "marker {hb_item:item} som <hb_done>"
+          - "{hb_item:item} er <hb_done>"
+          - "jeg er færdig med {hb_item:item}"
+          - "jeg har (klaret|færdiggjort|fuldført|udført) {hb_item:item}"
+  HomeboardStatus:
+    data:
+      - sentences:
+          - "hvordan (går det|ser det ud|står det til) (med|på) [<hb_den>] <hb_board>"
+          - "hvordan ser [<hb_den>] <hb_board> ud"
+          - "(hvad er|hvordan er) status (på|for) [<hb_den>] <hb_board>"
+          - "status (på|for) [<hb_den>] <hb_board>"
+          - "hvad (står der|er der) på (tavlen|boardet)"
+          - "hvor mange (opgaver|sager) er der (åbne|tilbage)"
+expansion_rules:
+  hb_den: "(den|min|vores|det)"
+  hb_board: "(tavlen|tavle|boardet|board|opgavetavlen|kanbantavlen|kanban)"
+  hb_overdue: "(forsinket|forsinkede|forfaldent|forfaldne|overskredet)"
+  hb_done: "(færdig|færdigt|udført|klaret|fuldført|lukket)"
+lists:
+  hb_item:
+    wildcard: true
+  hb_project:
+    wildcard: true
+  hb_person:
+    wildcard: true

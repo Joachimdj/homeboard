@@ -142,6 +142,7 @@ class StatusCardEditor extends CardEditor {
       { name: "projects", kind: "projects" },
       { name: "show_people", kind: "bool", default: true },
       { name: "show_health", kind: "bool", default: true },
+      { name: "show_insights", kind: "bool", default: true },
     ];
   }
 }

@@ -19,19 +19,26 @@ from .const import (
     ISSUE_TYPES,
     PRIORITIES,
     REPEAT_UNITS,
+    SERVICE_ADD_CHECKLIST_ITEM,
     SERVICE_ADD_COMMENT,
     SERVICE_ADD_STATUS,
     SERVICE_ASSIGN_ISSUE,
+    SERVICE_ATTACH_CAMERA_SNAPSHOT,
+    SERVICE_CHECK_ITEM,
     SERVICE_CREATE_ISSUE,
     SERVICE_CREATE_PROJECT,
     SERVICE_CREATE_RECURRING,
     SERVICE_DELETE_ISSUE,
     SERVICE_DELETE_RECURRING,
+    SERVICE_FORGET_LEARNING,
     SERVICE_MOVE_ISSUE,
     SERVICE_QUICK_ADD,
+    SERVICE_REMOVE_CHECKLIST_ITEM,
     SERVICE_REMOVE_STATUS,
     SERVICE_RUN_RECURRING,
     SERVICE_SCAN_HEALTH,
+    SERVICE_SEND_DIGEST,
+    SERVICE_SUGGEST,
     SERVICE_UPDATE_ISSUE,
     SERVICE_UPDATE_PROJECT,
     SERVICE_UPDATE_RECURRING,
@@ -211,6 +218,7 @@ def _quick_add(manager: HomeboardData, call: ServiceCall, actor: str | None) -> 
         project=call.data.get("project"),
         actor=actor,
         source=call.data.get("source", "service"),
+        suggest=call.data.get("suggest", False),
     )
     return {**_ref(issue), "parsed": parsed.to_dict()}
 
@@ -300,6 +308,65 @@ def _run_recurring(manager: HomeboardData, call: ServiceCall, actor: str | None)
     return {"created": issue is not None, **(_ref(issue) if issue else {})}
 
 
+def _add_checklist_item(
+    manager: HomeboardData, call: ServiceCall, actor: str | None
+) -> dict[str, Any]:
+    issue = _issue_of(manager, call)
+    item = manager.add_checklist_item(issue["id"], call.data["text"], actor=actor, source="service")
+    return {**_ref(issue), "item_id": item["id"]}
+
+
+def _check_item(manager: HomeboardData, call: ServiceCall, actor: str | None) -> dict[str, Any]:
+    issue = _issue_of(manager, call)
+    item = manager.update_checklist_item(
+        issue["id"],
+        call.data["item"],
+        done=call.data.get("done", True),
+        actor=actor,
+        source="service",
+    )
+    return {**_ref(issue), "item_id": item["id"], "done": item["done"]}
+
+
+def _remove_checklist_item(
+    manager: HomeboardData, call: ServiceCall, actor: str | None
+) -> dict[str, Any]:
+    issue = _issue_of(manager, call)
+    manager.remove_checklist_item(issue["id"], call.data["item"], actor=actor, source="service")
+    return _ref(issue)
+
+
+async def _attach_camera_snapshot(
+    manager: HomeboardData, call: ServiceCall, actor: str | None
+) -> dict[str, Any]:
+    if manager.files is None:
+        raise ServiceValidationError("Attachments are not available")
+    issue = _issue_of(manager, call)
+    attachment = await manager.files.async_snapshot(issue["id"], call.data["camera"], author=actor)
+    return {**_ref(issue), "attachment_id": attachment["id"], "name": attachment["name"]}
+
+
+def _send_digest(manager: HomeboardData, call: ServiceCall, actor: str | None) -> dict[str, Any]:
+    if manager.push is None:
+        raise ServiceValidationError("Push notifications are not running")
+    return {"sent": manager.push.send_digests_now(call.data.get("person") or None)}
+
+
+def _suggest(manager: HomeboardData, call: ServiceCall, actor: str | None) -> dict[str, Any]:
+    parsed = manager.parse_quick_add(
+        call.data["text"], project=call.data.get("project"), actor=actor
+    )
+    return {"suggestion": manager.suggestion_for(parsed)}
+
+
+def _forget_learning(
+    manager: HomeboardData, call: ServiceCall, actor: str | None
+) -> dict[str, Any]:
+    if manager.learning is None:
+        raise ServiceValidationError("Learning is not running")
+    return {"forgotten": manager.learning.forget(call.data.get("feature"))}
+
+
 async def _scan_health(
     manager: HomeboardData, call: ServiceCall, actor: str | None
 ) -> dict[str, Any]:
@@ -365,6 +432,7 @@ SERVICES: tuple[tuple[str, Callable[..., Any], vol.Schema, bool], ...] = (
                 vol.Required("text"): cv.string,
                 vol.Optional("project"): cv.string,
                 vol.Optional("source"): vol.In(SOURCES),
+                vol.Optional("suggest"): cv.boolean,
             }
         ),
         True,
@@ -478,6 +546,56 @@ SERVICES: tuple[tuple[str, Callable[..., Any], vol.Schema, bool], ...] = (
         SERVICE_RUN_RECURRING,
         _run_recurring,
         vol.Schema({vol.Required("recurring_id"): cv.string}),
+        True,
+    ),
+    (
+        SERVICE_ADD_CHECKLIST_ITEM,
+        _add_checklist_item,
+        vol.Schema({**ISSUE_REF, vol.Required("text"): cv.string}),
+        True,
+    ),
+    (
+        SERVICE_CHECK_ITEM,
+        _check_item,
+        vol.Schema(
+            {**ISSUE_REF, vol.Required("item"): cv.string, vol.Optional("done"): cv.boolean}
+        ),
+        True,
+    ),
+    (
+        SERVICE_REMOVE_CHECKLIST_ITEM,
+        _remove_checklist_item,
+        vol.Schema({**ISSUE_REF, vol.Required("item"): cv.string}),
+        True,
+    ),
+    (
+        SERVICE_ATTACH_CAMERA_SNAPSHOT,
+        _attach_camera_snapshot,
+        vol.Schema({**ISSUE_REF, vol.Required("camera"): cv.entity_domain("camera")}),
+        True,
+    ),
+    (
+        SERVICE_SUGGEST,
+        _suggest,
+        vol.Schema({vol.Required("text"): cv.string, vol.Optional("project"): cv.string}),
+        True,
+    ),
+    (
+        SERVICE_FORGET_LEARNING,
+        _forget_learning,
+        vol.Schema(
+            {
+                vol.Optional("feature"): vol.In(
+                    ("defaults", "patterns", "workload", "health", "rhythm")
+                )
+            }
+        ),
+        True,
+    ),
+    (
+        SERVICE_SEND_DIGEST,
+        _send_digest,
+        vol.Schema({vol.Optional("person"): vol.Any(None, "", cv.entity_domain("person"))}),
         True,
     ),
     (SERVICE_SCAN_HEALTH, _scan_health, vol.Schema({vol.Optional("dry_run"): cv.boolean}), True),

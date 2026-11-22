@@ -53,6 +53,44 @@ CONF_PANEL_TITLE: Final = "panel_title"
 CONF_PANEL_ICON: Final = "panel_icon"
 CONF_PANEL_ADMIN_ONLY: Final = "panel_admin_only"
 
+# --- 0.2: push, files, checklists, assist, learning ----------------------
+CONF_PERSON_NOTIFY: Final = "person_notify"
+CONF_PUSH_ASSIGNED: Final = "push_assigned"
+CONF_PUSH_COMMENT: Final = "push_comment"
+CONF_PUSH_OVERDUE: Final = "push_overdue"
+CONF_PUSH_REPORTED_DONE: Final = "push_reported_done"
+CONF_DIGEST_ENABLED: Final = "digest_enabled"
+CONF_DIGEST_TIME: Final = "digest_time"
+CONF_QUIET_START: Final = "quiet_start"
+CONF_QUIET_END: Final = "quiet_end"
+CONF_ASSIST_SENTENCES: Final = "assist_sentences"
+CONF_ATTACHMENTS_ENABLED: Final = "attachments_enabled"
+CONF_MAX_UPLOAD_MB: Final = "max_upload_mb"
+CONF_CHECKLIST_AUTODONE: Final = "checklist_autodone"
+CONF_LEARN_DEFAULTS: Final = "learn_defaults"
+CONF_LEARN_PATTERNS: Final = "learn_patterns"
+CONF_LEARN_WORKLOAD: Final = "learn_workload"
+CONF_LEARN_HEALTH: Final = "learn_health"
+CONF_LEARN_RHYTHM: Final = "learn_rhythm"
+
+DEFAULT_DIGEST_TIME: Final = "07:30"
+DEFAULT_QUIET_START: Final = "22:00"
+DEFAULT_QUIET_END: Final = "07:00"
+DEFAULT_MAX_UPLOAD_MB: Final = 10
+CHECKLIST_MAX_ITEMS: Final = 100
+CHECKLIST_TEXT_MAX: Final = 200
+FILES_DIR: Final = "homeboard_files"
+FILES_URL_BASE: Final = "/api/homeboard"
+SIGNED_URL_SECONDS: Final = 3600
+ALLOWED_MIME: Final = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+    "application/pdf": ".pdf",
+}
+THUMB_SIZE: Final = 320
+
 # --- home health (auto-generated issues) ----------------------------------
 CONF_HEALTH_ENABLED: Final = "health_enabled"
 CONF_HEALTH_UNAVAILABLE: Final = "health_unavailable"
@@ -79,6 +117,42 @@ HEALTH_STARTUP_GRACE_MINUTES: Final = 10
 HEALTH_DEBOUNCE_SCANS: Final = 2
 HEALTH_REOPEN_COOLDOWN_MINUTES: Final = 30
 HEALTH_IGNORE_LABEL: Final = "ignore"
+# Helper-like platforms: an unavailable one is not a device that needs fixing.
+HEALTH_IGNORED_PLATFORMS: Final = frozenset(
+    {
+        "template",
+        "group",
+        "derivative",
+        "integration",
+        "utility_meter",
+        "min_max",
+        "threshold",
+        "statistics",
+        "history_stats",
+        "trend",
+        "filter",
+        "generic_thermostat",
+        "generic_hygrostat",
+        "switch_as_x",
+        "random",
+        "scene",
+        "automation",
+        "script",
+        "schedule",
+        "input_boolean",
+        "input_number",
+        "input_select",
+        "input_text",
+        "input_datetime",
+        "input_button",
+        "counter",
+        "timer",
+        "person",
+        "zone",
+        "sun",
+        DOMAIN,
+    }
+)
 
 DEFAULT_DUE_SOON_HOURS: Final = 72
 DEFAULT_AUTO_ARCHIVE_DAYS: Final = 30
@@ -106,6 +180,8 @@ EVENT_ISSUE_OVERDUE: Final = f"{DOMAIN}_issue_overdue"
 EVENT_ISSUE_DUE_SOON: Final = f"{DOMAIN}_issue_due_soon"
 EVENT_WIP_EXCEEDED: Final = f"{DOMAIN}_wip_exceeded"
 EVENT_PROJECT_CHANGED: Final = f"{DOMAIN}_project_changed"
+EVENT_ATTACHMENT_ADDED: Final = f"{DOMAIN}_attachment_added"
+EVENT_ATTACHMENT_REMOVED: Final = f"{DOMAIN}_attachment_removed"
 
 # --- services --------------------------------------------------------------
 SERVICE_CREATE_ISSUE: Final = "create_issue"
@@ -125,3 +201,10 @@ SERVICE_UPDATE_RECURRING: Final = "update_recurring"
 SERVICE_DELETE_RECURRING: Final = "delete_recurring"
 SERVICE_RUN_RECURRING: Final = "run_recurring"
 SERVICE_SCAN_HEALTH: Final = "scan_health"
+SERVICE_ADD_CHECKLIST_ITEM: Final = "add_checklist_item"
+SERVICE_CHECK_ITEM: Final = "check_item"
+SERVICE_REMOVE_CHECKLIST_ITEM: Final = "remove_checklist_item"
+SERVICE_ATTACH_CAMERA_SNAPSHOT: Final = "attach_camera_snapshot"
+SERVICE_SUGGEST: Final = "suggest"
+SERVICE_SEND_DIGEST: Final = "send_digest"
+SERVICE_FORGET_LEARNING: Final = "forget_learning"

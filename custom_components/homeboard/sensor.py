@@ -245,6 +245,32 @@ class HomeboardPersonSensor(HomeboardEntity, SensorEntity):
         }
 
 
+class HomeboardSuggestionsSensor(HomeboardEntity, SensorEntity):
+    """Number of open learning suggestions (recurring chores, noisy faults, digest times)."""
+
+    _attr_translation_key = "suggestions"
+    _attr_native_unit_of_measurement = "suggestions"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_unique_id = "global_suggestions"
+
+    def __init__(self, manager: HomeboardData) -> None:
+        """Initialise the sensor."""
+        super().__init__(manager, None)
+
+    @property
+    def native_value(self) -> int:
+        """Return how many suggestions are open."""
+        return self.manager.learning.open_count() if self.manager.learning else 0
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """List the open suggestions."""
+        items = self.manager.learning._suggestions if self.manager.learning else []
+        return {
+            "suggestions": [{"id": i["id"], "kind": i["kind"], "title": i["title"]} for i in items]
+        }
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: HomeboardConfigEntry,
@@ -259,6 +285,7 @@ async def async_setup_entry(
             wanted[f"global_{description.key}"] = lambda d=description: HomeboardSensor(
                 manager, d, None
             )
+        wanted["global_suggestions"] = lambda: HomeboardSuggestionsSensor(manager)
         for project in manager.projects.values():
             pid = project["id"]
             for description in PROJECT_SENSORS:

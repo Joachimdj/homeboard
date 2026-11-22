@@ -242,4 +242,94 @@ loads from the network. Entry modules: `homeboard-panel.js` (defines custom elem
 `route`, `panel` as properties) and `homeboard-card.js` (defines `homeboard-board-card`,
 `homeboard-status-card`, `homeboard-quick-add-card`, each pushed to `window.customCards`, each with
 `getConfigElement` / `getStubConfig`). Deep links: `/homeboard?issue=HOME-12` opens the issue dialog,
-`/homeboard?kiosk` hides the chrome for wall tablets, `?project=HOME` selects a project.
+`/homeboard?kiosk` hides the chrome for wall tablets, `?project=HOME` selects a project, `?tab=insights` opens the Insights tab.
+
+## 10. Version 0.2 additions (checklists, files, push, Assist, learning)
+
+Design: `docs/DESIGN-0.2.md`. Everything here is additive; 0.1 clients keep working.
+
+### 10.1 Store additions
+
+Issue: `checklist: [{ "id", "text", "done" }]`, `attachments: [{ "id", "name", "mime", "size", "ts", "author", "source" }]`
+(`source` = `upload` | `camera`). Top level: `learning: { ... }` (private to `insights.py`).
+
+### 10.2 Payload additions
+
+- Issue (list payload): `checklist_total`, `checklist_done`, `attachment_count`; for `type == "epic"` also
+  `epic_total`, `epic_done` (child issues, done = category done). Issue detail (`issue/get`) additionally has
+  `checklist` (the items) and `attachments`: `{ id, name, mime, size, ts, author, source, url, thumb_url }` where
+  `url` / `thumb_url` are **signed paths** (valid one hour, usable in `<img src>` and `<a href>`; fetch the detail
+  again when they expire).
+- `settings.learning` = `{ defaults, patterns, workload, health, rhythm }` (booleans), `settings.attachments` = `{ enabled, max_mb }`,
+  `settings.insights_open` = number of open suggestions (for a badge).
+
+### 10.3 WebSocket additions
+
+| type | params | result |
+|------|--------|--------|
+| `homeboard/checklist/add` | `issue_id`, `text` | item |
+| `homeboard/checklist/update` | `issue_id`, `item_id`, `text?`, `done?` | item |
+| `homeboard/checklist/remove` | `issue_id`, `item_id` | `{deleted}` |
+| `homeboard/checklist/reorder` | `issue_id`, `item_ids` (complete list) | `{ok}` |
+| `homeboard/attachment/remove` | `issue_id`, `attachment_id` | `{deleted}` |
+| `homeboard/attachment/snapshot` | `issue_id`, `entity_id` (a `camera.*`) | attachment |
+| `homeboard/insights/get` | - | insights (10.5) |
+| `homeboard/insights/accept` | `suggestion_id` | `{applied, issue?, recurring_id?}` |
+| `homeboard/insights/dismiss` | `suggestion_id` | `{dismissed}` |
+| `homeboard/insights/forget` (admin) | `feature?` (`defaults` \| `patterns` \| `workload` \| `health` \| `rhythm`; omitted = all) | `{forgotten: [what was cleared]}` (defaults / patterns / workload are computed live from the issues, so only their dismissed suggestions are stored) |
+| `homeboard/suggest` | `text`, `project?` | suggestion or `null` |
+
+`homeboard/quick_add/preview` now also returns `suggestion` (10.4, or `null`) next to the parsed fields. `homeboard/quick_add`
+and the `quick_add` service take `suggest?` (bool, default false over the service, the panel sends true when the user keeps
+the chips): fields the text did not specify are filled from the suggestion.
+
+**Files over HTTP** (signed-in users only, `hass.fetchWithAuth` from the frontend):
+`POST /api/homeboard/upload` as `multipart/form-data` with fields `issue_id` and `file` -> the attachment JSON (with `url`,
+`thumb_url`); 413 above `max_mb`, 415 for other types than jpeg / png / webp / gif / pdf, 404 unknown issue.
+`GET /api/homeboard/files/<attachment_id>` and `.../thumb` are served with a valid `authSig` signature or a bearer token.
+
+### 10.4 Suggestion (smart defaults)
+
+`{ "assignee": "person.x" | null, "labels": ["bills"], "priority": "high" | null, "due_in_days": 3 | null,
+"similar": [ { "key": "HOME-12", "summary": "...", "status": "Done" } ], "evidence": "based on 4 similar issues",
+"confidence": 0.0-1.0 }` or `null` (feature off, or nothing similar). Only fields the quick-add text did not already set.
+
+### 10.5 Insights
+
+```jsonc
+{
+  "features": { "defaults": true, "patterns": true, "workload": true, "health": true, "rhythm": false },
+  "suggestions": [ { "id": "...", "kind": "recurring" | "health_ignore" | "digest_time",
+                     "title": "Make 'Order bin bags' a recurring chore?", "detail": "Created 4 times, about every 6 weeks",
+                     "evidence": { "count": 4, "interval_days": 42 }, "proposal": { /* kind specific */ } } ],
+  "learned": {
+    "defaults": { "issues_analysed": 34, "top_labels": [ ["bills", 5] ], "people": [ { "person": "person.x", "issues": 12 } ] },
+    "workload": { "people": { "person.x": { "open": 3, "done_30d": 8, "avg_days": 3.5 } },
+                  "types": { "bug": 4.2 }, "labels": { "garden": 6.0 } },          // average days created -> done
+    "rhythm":   { "people": { "person.x": { "samples": 2016, "grid": [[0.0, ...24 numbers 0..1], ...7 rows, Mon=0] } } },
+    "health":   { "tracked_sensors": 812, "silent": [ { "entity_id": "sensor.x", "normal_minutes": 15, "silent_minutes": 190 } ],
+                  "flapping": [ { "key": "health:offline:...", "summary": "...", "reopened": 3 } ] }
+  }
+}
+```
+
+Suggestion kinds and `proposal`: `recurring` = `{ project_id, summary, repeat, next_due, assignee, labels, priority }`;
+`health_ignore` = `{ key, summary }` (accept = stop reporting that fault); `digest_time` = `{ person, time: "07:30" }`.
+Accepting is always a user action; nothing is applied silently. `rhythm` is absent unless the feature is on.
+
+### 10.6 Services and events
+
+Services: `add_checklist_item`, `check_item`, `remove_checklist_item`, `attach_camera_snapshot` (`issue` or `project` +
+`dedupe_key`, `camera`), `suggest` (response = suggestion), `send_digest` (`person?`), `forget_learning` (`feature?`).
+Events: `homeboard_attachment_added`, `homeboard_attachment_removed` (issue data + `attachment`); checklist edits fire
+`homeboard_issue_updated` with `changes.checklist` = `{from: "2/5", to: "3/5"}`; accepting a suggestion fires the normal
+events of what it creates. New source value: `assist` is already present, `digest` is not an issue source.
+
+### 10.7 Options (config entry)
+
+Push: `person_notify` = `{ "person.x": ["mobile_app_x"] }` (empty = auto-detected from the person's device trackers),
+`push_assigned`, `push_comment`, `push_overdue`, `push_reported_done` (default true), `digest_enabled` (default false),
+`digest_time` (`"07:30"`). Assist: `assist_sentences` (default false: writes `config/custom_sentences/<lang>/homeboard.yaml`).
+Files: `attachments_enabled` (default true), `max_upload_mb` (default 10). Checklists: `checklist_autodone` (default false: moving the
+last item to done moves the issue to Done). Learning: `learn_defaults`, `learn_patterns`, `learn_workload`, `learn_health`
+(default true), `learn_rhythm` (default **false**: reads person home / away state).

@@ -54,3 +54,58 @@ on the backend side (or tell the frontend to adapt).
   companion apps).
 - **Speech recognition** (mic button) appears only when `SpeechRecognition` / `webkitSpeechRecognition`
   exists; the language comes from `hass.locale.language` mapped to a region (`da` -> `da-DK`).
+
+## Version 0.2 (PROTOCOL section 10): assumptions and choices
+
+Checklists
+- Items and counters: the card chip uses `checklist_done` / `checklist_total`, epics use `epic_done` /
+  `epic_total`, the dialog edits the `checklist` of `issue/get`. Writes are shown at once (the dialog's copy
+  and the card counters) and a failed write refetches the detail.
+- The UI stops at 100 items and 200 characters per item (the limits in `const.py`); a pasted multi-line text
+  becomes one item per line. `checklist/reorder` always sends the complete id list.
+- `checklist_autodone` stays a backend matter: when it moves the issue to Done the normal push shows it.
+
+Attachments
+- The whole section is hidden unless `settings.attachments.enabled === true`, so a 0.1 backend (no such key)
+  shows nothing. It is also hidden in the "New issue" form (there is no issue id yet). The paperclip chip on
+  cards shows whenever `attachment_count > 0`, regardless of the setting.
+- Upload goes through `hass.fetchWithAuth("/api/homeboard/upload", { method: "POST", body: FormData })` with the
+  fields `issue_id` and `file`. `fetch` has no upload progress, so an upload shows a spinner tile instead of a
+  percentage. The type (jpeg / png / webp / gif / pdf) and size (`settings.attachments.max_mb`) are checked in the
+  browser first; 413 / 415 / 404 from the server get the same wording. The 413 toast contains the limit in MB and the
+  literal name `settings.attachments.max_mb`, as asked.
+- PDFs are assumed to have no `thumb_url` (a file icon is shown); they open in a new tab from `url`.
+- Signed URLs: a failing `<img>` refetches `issue/get` (at most once every 10 seconds). The mock harness can
+  revoke its URLs with the "Expire file URLs" button to prove that path.
+- Paste and drop listen on `window` while the issue dialog is the top-most dialog and attachments are enabled.
+  A pasted image without a name is called `pasted-image-<time>.<ext>`.
+- Camera snapshot lists `camera.*` from `hass.states` and calls `homeboard/attachment/snapshot`.
+
+Smart defaults
+- `quick_add/preview` returns the parsed fields plus `suggestion`; the frontend splits it off. The chips show
+  below the parsed chips, dimmed and dashed, with a "?" button for the evidence and the `similar` issues as links
+  (links only for issues that are on the board). "Use suggestions" is remembered in `localStorage`
+  (`homeboard.useSuggestions`, default on) and decides whether `quick_add` gets `suggest: true`. The row is shown
+  when `settings.learning.defaults` is true.
+- The new-issue "Suggest" button (same condition) calls `homeboard/suggest` and fills only empty fields:
+  assignee, labels, priority (only if the user did not change it), and the due date = today + `due_in_days`
+  (local date).
+
+Insights
+- The tab exists only while some `settings.learning` flag is true; the badge is `settings.insights_open`.
+  `homeboard/insights/get` is fetched when the tab opens and again whenever `insights_open` changes. Reading is
+  assumed to be open to every signed-in user; only `insights/forget` is admin (buttons hidden for non-admins).
+- `accept` of a `recurring` suggestion shows a toast linking to the project settings > Recurring tab
+  (`proposal.project_id` must be a project id); `health_ignore` and `digest_time` just confirm.
+- Evidence text is built for `recurring` (`count`, `interval_days`), `health_ignore` (`reopened`) and
+  `digest_time` (`samples`); anything else falls back to "key: value" pairs.
+- Added deep link `?tab=insights` (used by the status card's suggestions tile); it is consumed like `?project`.
+- `learned.patterns` does not exist in PROTOCOL 10.5, so the "Pattern finder" card only states what it uses.
+- The rhythm grid is read as 7 rows (Monday first) of 24 values in 0..1; missing cells count as 0.
+
+Open questions for the backend
+1. What `field` name will the activity log use for attachment changes? The frontend knows `checklist` (as in
+   `checklist.py`) and shows unknown names verbatim.
+2. Does the upload response carry `url` and `thumb_url` (signed) like the detail does? The frontend refetches the
+   detail after every upload anyway.
+3. `suggestion.similar[].status` is shown as the status name.

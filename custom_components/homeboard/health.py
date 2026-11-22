@@ -58,6 +58,7 @@ from .const import (
     DOMAIN,
     HEALTH_DEBOUNCE_SCANS,
     HEALTH_IGNORE_LABEL,
+    HEALTH_IGNORED_PLATFORMS,
     HEALTH_PROJECT_KEY,
     HEALTH_PROJECT_NAME,
     HEALTH_REOPEN_COOLDOWN_MINUTES,
@@ -65,6 +66,7 @@ from .const import (
     PRIORITIES,
 )
 from .data import UNSET, HomeboardData
+from .learning import fmt_minutes
 from .model import NotFoundError
 
 _LOGGER = logging.getLogger(__name__)
@@ -94,42 +96,6 @@ SECURITY_CLASSES = frozenset(
     }
 )
 SECURITY_DOMAINS = frozenset({"camera", "alarm_control_panel", "lock", "siren"})
-# Helper-like platforms: an unavailable one is not a device that needs fixing.
-IGNORED_PLATFORMS = frozenset(
-    {
-        "template",
-        "group",
-        "derivative",
-        "integration",
-        "utility_meter",
-        "min_max",
-        "threshold",
-        "statistics",
-        "history_stats",
-        "trend",
-        "filter",
-        "generic_thermostat",
-        "generic_hygrostat",
-        "switch_as_x",
-        "random",
-        "scene",
-        "automation",
-        "script",
-        "schedule",
-        "input_boolean",
-        "input_number",
-        "input_select",
-        "input_text",
-        "input_datetime",
-        "input_button",
-        "counter",
-        "timer",
-        "person",
-        "zone",
-        "sun",
-        DOMAIN,
-    }
-)
 DEVICE_LESS_DOMAINS = frozenset(
     {
         "sensor",
@@ -208,7 +174,7 @@ class _Context:
             entry.disabled_by
             or entry.hidden_by
             or entry.entity_id in self.excluded_entities
-            or entry.platform in IGNORED_PLATFORMS
+            or entry.platform in HEALTH_IGNORED_PLATFORMS
             or entry.platform.lower() in self.excluded_integrations
         )
 
@@ -452,6 +418,46 @@ def collect_integrations(ctx: _Context) -> list[Finding]:
     return list(findings.values())
 
 
+def collect_silent(ctx: _Context, learning: Any) -> list[Finding]:
+    """Sensors that normally report regularly but have gone quiet (learned rhythm)."""
+    by_device: dict[str, list[tuple[er.RegistryEntry, dict[str, Any]]]] = defaultdict(list)
+    for candidate in learning.silent_candidates():
+        entry = ctx.entities.async_get(candidate["entity_id"])
+        if entry is None or ctx.entry_excluded(entry):
+            continue
+        by_device[entry.device_id or entry.entity_id].append((entry, candidate))
+    findings = []
+    for ident, items in by_device.items():
+        device = ctx.devices.async_get(ident)
+        first_entry, _ = items[0]
+        name = (
+            ctx.device_name(device)
+            if device
+            else _friendly(ctx.hass.states.get(first_entry.entity_id), first_entry)
+        )
+        lines = [
+            f"{_friendly(ctx.hass.states.get(e.entity_id), e)}: normally every ~{c['normal_minutes']} min, "
+            f"silent for {fmt_minutes(c['silent_minutes'])}"
+            for e, c in items
+        ]
+        security = ctx.is_security(
+            _device_pairs(ctx, device)
+            or [(first_entry, ctx.hass.states.get(first_entry.entity_id))]
+        )
+        findings.append(
+            Finding(
+                key=f"{KEY_PREFIX}silent:{ident}",
+                detector="silent",
+                summary=f"{name} stopped reporting",
+                description=_listing(lines) + FOOTER,
+                priority="high" if security else "medium",
+                labels=["auto", "silent"] + (["security"] if security else []),
+                fingerprint=tuple(sorted(e.entity_id for e, _ in items)),
+            )
+        )
+    return findings
+
+
 async def collect_repairs(ctx: _Context) -> list[Finding]:
     """Open Home Assistant repair issues."""
     hass = ctx.hass
@@ -615,6 +621,9 @@ class HealthMonitor:
             findings += await collect_repairs(ctx)
         if _bool_option(options, CONF_HEALTH_UPDATES, False):
             findings += collect_updates(ctx)
+        learning = self.manager.learning
+        if learning is not None and learning.enabled("health"):
+            findings += collect_silent(ctx, learning)
         # Device offline findings are redundant when the integration itself is broken.
         broken = {
             f.key.split(":", 2)[2] for f in findings if f.detector in ("integration", "reauth")
@@ -704,6 +713,8 @@ class HealthMonitor:
         cooldown = timedelta(minutes=HEALTH_REOPEN_COOLDOWN_MINUTES)
         now = dt_util.utcnow()
         assignee = self._opt(CONF_HEALTH_ASSIGNEE, None) or None
+        learning = self.manager.learning
+        ignored = learning.health_ignored() if learning is not None else set()
         open_count = sum(
             1
             for issue in self.manager.project_issues(project["id"])
@@ -714,6 +725,10 @@ class HealthMonitor:
             existing = self.manager.find_by_dedupe(
                 project, finding.key, open_only=False, include_archived=True
             )
+            if finding.key in ignored:
+                result["suppressed"] += 1
+                add(finding, "ignored")
+                continue
             if existing is not None and HEALTH_IGNORE_LABEL in existing["labels"]:
                 result["suppressed"] += 1
                 add(finding, "ignored")
@@ -736,6 +751,10 @@ class HealthMonitor:
                 continue
 
             if existing is not None:  # done: snoozed, cooling down, or back
+                if learning is not None and not dry_run and not existing["auto_resolved"]:
+                    learning.record_health(
+                        "closures", finding.key, f"{existing['id']}@{existing['resolved']}"
+                    )
                 resolved = dt_util.parse_datetime(existing["resolved"] or "") or now
                 wait = cooldown if existing["auto_resolved"] else snooze
                 if now - resolved < wait and not (force and existing["auto_resolved"]):
@@ -750,6 +769,8 @@ class HealthMonitor:
                     add(finding, "capped")
                     continue
                 self.manager.reopen_automatically(existing["id"], "Problem is back.")
+                if learning is not None:
+                    learning.record_health("reopens", finding.key)
                 self._remember_fingerprint(existing, finding, dry_run)
                 open_count += 1
                 result["reopened"] += 1

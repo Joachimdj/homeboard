@@ -1,7 +1,12 @@
 {
   "domain": "homeboard",
   "name": "Homeboard",
-  "codeowners": ["@joachimdj"],
+  "after_dependencies": [
+    "camera"
+  ],
+  "codeowners": [
+    "@joachimdj"
+  ],
   "config_flow": true,
   "dependencies": [
     "http",
@@ -17,5 +22,5 @@
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/Joachimdj/homeboard/issues",
   "single_config_entry": true,
-  "version": "0.1.0"
+  "version": "0.2.0"
 }

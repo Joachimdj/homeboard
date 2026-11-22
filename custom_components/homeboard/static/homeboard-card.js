@@ -199,11 +199,11 @@ class HomeboardStatusCard extends HomeboardBaseCard {
   }
 
   static getStubConfig() {
-    return { show_people: true, show_health: true };
+    return { show_people: true, show_health: true, show_insights: true };
   }
 
   normaliseConfig(config) {
-    return { show_people: true, show_health: true, ...config };
+    return { show_people: true, show_health: true, show_insights: true, ...config };
   }
 
   title() {
@@ -218,11 +218,13 @@ class HomeboardStatusCard extends HomeboardBaseCard {
       projectIds: this.config.projects?.length ? this.config.projects : null,
       showPeople: this.config.show_people !== false,
       showHealth: this.config.show_health !== false,
+      showInsights: this.config.show_insights !== false,
       showAttention: false,
       onOpenBoard: (projectId) => {
         const project = projectId && index.projectById.get(projectId);
         navigate(project ? `${PANEL_PATH}?project=${project.key}` : PANEL_PATH);
       },
+      onOpenInsights: () => navigate(`${PANEL_PATH}?tab=insights`),
       onOpenIssue: (issue) => openIssueDialog(issue.id),
     });
   }

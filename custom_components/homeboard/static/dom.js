@@ -117,7 +117,8 @@ function applyDomProps(el, next, prev) {
     const value = next[name];
     if (name === "value") {
       const text = value == null ? "" : String(value);
-      // A focused field whose bound value did not change keeps what the user is typing.
+      // A focused field whose bound value did not change keeps what the user is typing,
+      // so inputs that are cleared from code must update their state (and render) on input.
       const typing = prev.value === value && el.getRootNode().activeElement === el;
       if (el.value !== text && !typing) el.value = text;
     } else if (el[name] !== Boolean(value)) {

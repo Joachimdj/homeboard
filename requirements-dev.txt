@@ -1,2 +1,7 @@
 pytest-homeassistant-custom-component
 ruff
+home-assistant-frontend
+PyTurboJPEG
+hassil
+home-assistant-intents
+gazetteer-matcher

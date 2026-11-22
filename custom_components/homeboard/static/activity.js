@@ -3,7 +3,7 @@
 import { t } from "./i18n.js";
 import { personName } from "./indexes.js";
 
-const FIELD_KEYS = new Set(["summary", "description", "type", "priority", "assignee", "labels", "due", "parent", "status"]);
+const FIELD_KEYS = new Set(["summary", "description", "type", "priority", "assignee", "labels", "due", "parent", "status", "checklist", "attachments"]);
 
 function formatValue(field, value, index) {
   if (value == null || value === "" || (Array.isArray(value) && !value.length)) return t("activity.none");

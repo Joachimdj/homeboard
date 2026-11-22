@@ -11,11 +11,15 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
+from .assist import async_setup_assist, async_unload_assist
 from .const import CONF_STARTER_PROJECT, DOMAIN
 from .data import HomeboardData
+from .files import FileStore, async_register_views
 from .frontend import async_register_frontend, async_unregister_frontend
 from .health import HealthMonitor
+from .learning import LearningEngine
 from .notify import async_setup_notifications
+from .push import PushNotifier
 from .services import async_setup_services
 from .store import HomeboardStore
 from .websocket_api import async_register_websocket_api
@@ -38,6 +42,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Register services and the websocket API (they exist even before the entry loads)."""
     async_setup_services(hass)
     async_register_websocket_api(hass)
+    async_register_views(hass)
     return True
 
 
@@ -57,13 +62,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: HomeboardConfigEntry) ->
 
     entry.runtime_data = manager
     hass.data[DOMAIN] = manager
+    await async_setup_assist(hass, entry)
     manager.health = HealthMonitor(hass, manager)
+    manager.files = FileStore(hass, manager)
+    manager.push = PushNotifier(hass, manager)
+    manager.learning = LearningEngine(hass, manager)
 
     await async_register_frontend(hass, dict(entry.options), manager.version)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     manager.async_start()
     manager.health.async_start()
+    manager.push.async_start()
+    manager.learning.async_start()
     async_setup_notifications(hass, entry)
     return True
 
@@ -76,7 +87,17 @@ async def async_unload_entry(hass: HomeAssistant, entry: HomeboardConfigEntry) -
         manager.async_stop()
         if manager.health:
             manager.health.async_stop()
+        if manager.push:
+            manager.push.async_stop()
+        if manager.learning:
+            manager.learning.async_stop()
         async_unregister_frontend(hass)
+        await async_unload_assist(hass, entry)
         await manager.async_save_now()
         hass.data.pop(DOMAIN, None)
     return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: HomeboardConfigEntry) -> None:
+    """Leave no Assist sentence files behind when the integration is deleted."""
+    await async_unload_assist(hass, entry)

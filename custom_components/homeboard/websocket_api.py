@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 import voluptuous as vol
+from homeassistant.auth.permissions.const import POLICY_READ
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
@@ -13,7 +14,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import CATEGORIES, DOMAIN, ISSUE_TYPES, PRIORITIES, REPEAT_UNITS, SIGNAL_UPDATED
 from .data import HomeboardData
-from .model import HomeboardError
+from .model import HomeboardError, NotFoundError
 
 PERSON = vol.Any(None, "", cv.entity_domain("person"))
 DUE = vol.Any(None, "", cv.string)
@@ -503,6 +504,7 @@ def ws_issue_list(
         vol.Required("type"): "homeboard/quick_add",
         vol.Required("text"): cv.string,
         vol.Optional("project"): cv.string,
+        vol.Optional("suggest"): cv.boolean,
     }
 )
 @callback
@@ -513,7 +515,11 @@ def ws_quick_add(
 
     def handler(m: HomeboardData, c: Any, msg: dict[str, Any], actor: str | None) -> dict[str, Any]:
         issue, parsed = m.quick_add(
-            msg["text"], project=msg.get("project"), actor=actor, source="ui"
+            msg["text"],
+            project=msg.get("project"),
+            actor=actor,
+            source="ui",
+            suggest=msg.get("suggest", False),
         )
         return {"issue": m.issue_view(issue), "parsed": parsed.to_dict()}
 
@@ -531,12 +537,13 @@ def ws_quick_add(
 def ws_quick_add_preview(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Parse a quick-add line without writing anything."""
-    _run(
-        lambda m, c, msg, actor: m.parse_quick_add(
-            msg["text"], project=msg.get("project"), actor=actor
-        ).to_dict()
-    )(hass, connection, msg)
+    """Parse a quick-add line without writing anything (plus the learned suggestion)."""
+
+    def handler(m: HomeboardData, c: Any, msg: dict[str, Any], actor: str | None) -> dict[str, Any]:
+        parsed = m.parse_quick_add(msg["text"], project=msg.get("project"), actor=actor)
+        return {**parsed.to_dict(), "suggestion": m.suggestion_for(parsed)}
+
+    _run(handler)(hass, connection, msg)
 
 
 # ---------------------------------------------------------------- recurring
@@ -648,6 +655,228 @@ def ws_recurring_run_now(
     _run(handler)(hass, connection, msg)
 
 
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "homeboard/checklist/add",
+        vol.Required("issue_id"): cv.string,
+        vol.Required("text"): cv.string,
+    }
+)
+@callback
+def ws_checklist_add(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Add a checklist item."""
+    _run(
+        lambda m, c, msg, actor: m.add_checklist_item(
+            msg["issue_id"], msg["text"], actor=actor, source="ui"
+        )
+    )(hass, connection, msg)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "homeboard/checklist/update",
+        vol.Required("issue_id"): cv.string,
+        vol.Required("item_id"): cv.string,
+        vol.Optional("text"): cv.string,
+        vol.Optional("done"): cv.boolean,
+    }
+)
+@callback
+def ws_checklist_update(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Rename or tick a checklist item."""
+    _run(
+        lambda m, c, msg, actor: m.update_checklist_item(
+            msg["issue_id"],
+            msg["item_id"],
+            text=msg.get("text"),
+            done=msg.get("done"),
+            actor=actor,
+            source="ui",
+        )
+    )(hass, connection, msg)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "homeboard/checklist/remove",
+        vol.Required("issue_id"): cv.string,
+        vol.Required("item_id"): cv.string,
+    }
+)
+@callback
+def ws_checklist_remove(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Remove a checklist item."""
+
+    def handler(m: HomeboardData, c: Any, msg: dict[str, Any], actor: str | None) -> dict[str, str]:
+        m.remove_checklist_item(msg["issue_id"], msg["item_id"], actor=actor, source="ui")
+        return {"deleted": msg["item_id"]}
+
+    _run(handler)(hass, connection, msg)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "homeboard/checklist/reorder",
+        vol.Required("issue_id"): cv.string,
+        vol.Required("item_ids"): [cv.string],
+    }
+)
+@callback
+def ws_checklist_reorder(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Reorder a checklist."""
+
+    def handler(
+        m: HomeboardData, c: Any, msg: dict[str, Any], actor: str | None
+    ) -> dict[str, bool]:
+        m.reorder_checklist(msg["issue_id"], msg["item_ids"])
+        return {"ok": True}
+
+    _run(handler)(hass, connection, msg)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "homeboard/attachment/remove",
+        vol.Required("issue_id"): cv.string,
+        vol.Required("attachment_id"): cv.string,
+    }
+)
+@websocket_api.async_response
+async def ws_attachment_remove(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Delete an attachment."""
+    manager: HomeboardData | None = hass.data.get(DOMAIN)
+    if manager is None or manager.files is None:
+        connection.send_error(msg["id"], "not_loaded", "Homeboard is not set up")
+        return
+    try:
+        await manager.files.async_remove(
+            msg["issue_id"], msg["attachment_id"], actor=manager.person_for_user(connection.user.id)
+        )
+    except HomeboardError as err:
+        connection.send_error(msg["id"], err.code, str(err))
+        return
+    connection.send_result(msg["id"], {"deleted": msg["attachment_id"]})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "homeboard/attachment/snapshot",
+        vol.Required("issue_id"): cv.string,
+        vol.Required("entity_id"): cv.entity_domain("camera"),
+    }
+)
+@websocket_api.async_response
+async def ws_attachment_snapshot(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Attach a still picture from a camera (the user must be allowed to read the camera)."""
+    manager: HomeboardData | None = hass.data.get(DOMAIN)
+    if manager is None or manager.files is None:
+        connection.send_error(msg["id"], "not_loaded", "Homeboard is not set up")
+        return
+    if not connection.user.permissions.check_entity(msg["entity_id"], POLICY_READ):
+        connection.send_error(msg["id"], "unauthorized", "You may not read this camera")
+        return
+    try:
+        attachment = await manager.files.async_snapshot(
+            msg["issue_id"], msg["entity_id"], author=manager.person_for_user(connection.user.id)
+        )
+    except HomeboardError as err:
+        connection.send_error(msg["id"], err.code, str(err))
+        return
+    connection.send_result(msg["id"], manager.files.describe([attachment])[0])
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "homeboard/suggest",
+        vol.Required("text"): cv.string,
+        vol.Optional("project"): cv.string,
+    }
+)
+@callback
+def ws_suggest(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Return the learned suggestion for a title (null = nothing to suggest)."""
+
+    def handler(m: HomeboardData, c: Any, msg: dict[str, Any], actor: str | None) -> Any:
+        return m.suggestion_for(
+            m.parse_quick_add(msg["text"], project=msg.get("project"), actor=actor)
+        )
+
+    _run(handler)(hass, connection, msg)
+
+
+def _learning(m: HomeboardData) -> Any:
+    if m.learning is None:
+        raise NotFoundError("Learning is not running")
+    return m.learning
+
+
+@websocket_api.websocket_command({vol.Required("type"): "homeboard/insights/get"})
+@callback
+def ws_insights_get(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Return suggestions and what has been learned."""
+    _run(lambda m, c, msg, actor: _learning(m).insights())(hass, connection, msg)
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "homeboard/insights/accept", vol.Required("suggestion_id"): cv.string}
+)
+@callback
+def ws_insights_accept(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Accept a suggestion."""
+    _run(lambda m, c, msg, actor: _learning(m).accept(msg["suggestion_id"]))(hass, connection, msg)
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): "homeboard/insights/dismiss", vol.Required("suggestion_id"): cv.string}
+)
+@callback
+def ws_insights_dismiss(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Dismiss a suggestion."""
+
+    def handler(m: HomeboardData, c: Any, msg: dict[str, Any], actor: str | None) -> dict[str, str]:
+        _learning(m).dismiss(msg["suggestion_id"])
+        return {"dismissed": msg["suggestion_id"]}
+
+    _run(handler)(hass, connection, msg)
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "homeboard/insights/forget",
+        vol.Optional("feature"): vol.In(("defaults", "patterns", "workload", "health", "rhythm")),
+    }
+)
+@callback
+def ws_insights_forget(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Forget what a learning feature stored."""
+    _run(lambda m, c, msg, actor: {"forgotten": _learning(m).forget(msg.get("feature"))})(
+        hass, connection, msg
+    )
+
+
 @websocket_api.require_admin
 @websocket_api.websocket_command(
     {vol.Required("type"): "homeboard/health/scan", vol.Optional("dry_run"): cv.boolean}
@@ -692,6 +921,17 @@ COMMANDS = (
     ws_recurring_update,
     ws_recurring_delete,
     ws_recurring_run_now,
+    ws_checklist_add,
+    ws_checklist_update,
+    ws_checklist_remove,
+    ws_checklist_reorder,
+    ws_attachment_remove,
+    ws_attachment_snapshot,
+    ws_suggest,
+    ws_insights_get,
+    ws_insights_accept,
+    ws_insights_dismiss,
+    ws_insights_forget,
     ws_health_scan,
 )
 

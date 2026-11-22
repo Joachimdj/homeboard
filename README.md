@@ -31,6 +31,13 @@ Everything runs inside Home Assistant: no server, no cloud, no extra add-on.
 - **Recurring chores**: "put out the bins every Wednesday", "pay rent on the 1st", created ahead of time.
 - **Smart-home health**: issues for offline devices, low batteries, Home Assistant repairs and
   failing integrations, closed again when the fault is gone ([details](#smart-home-health)).
+- **Checklists and photos**: subtasks on every issue, photos and PDFs on issues (also straight from a
+  camera snapshot), stored privately.
+- **Push to the right person**: assigned to you, comments, deadlines, a morning digest, on your own
+  phone, with quiet hours.
+- **Learns, but only suggests**: smart defaults for new issues, recurring-chore suggestions,
+  workload and speed, sensor rhythms, and (opt-in) everyday home / away rhythm
+  ([how it works](#insights-homeboard-learns)).
 - **Native entities**: a `todo` list and a `calendar` per project, sensors for counts, per status and
   per person, so dashboards, Assist and automations can use the numbers.
 - **No manual setup of the frontend**: the sidebar panel and the Lovelace cards register themselves.
@@ -87,6 +94,27 @@ with no setup: *"Add light bulbs to the Home list"* creates `HOME-n` in the firs
 Give the entity an alias if you want a friendlier name. Completing an item in a native to-do card
 moves the issue to the first Done column.
 
+### Assist sentences (optional)
+
+Switch on **Configure > Photos, files and Assist > Install Assist sentences** and Homeboard writes
+`homeboard.yaml` into `config/custom_sentences/en/` and `.../da/` (marked "Managed by Homeboard"; it never
+touches a file without that mark, and removes its own again when you switch the option off or delete the
+integration). Assist then understands, in English and Danish:
+
+| Say | Does |
+|-----|------|
+| "add fix the gate due friday to the board", "put bulbs on the kitchen board" | creates an issue (quick-add words work; you become the reporter) |
+| "what is overdue" | counts and names the first three |
+| "what is on my list" / "what am I working on" | your open issues, in progress first |
+| "what is Padmaja working on" | the same for someone else |
+| "mark HOME-12 as done", "the gate is done" | moves it to Done; if several match it says which, and moves nothing |
+| "how is the board doing" | open / overdue / due soon, and the home-health count |
+| "tilføj køb pærer til tavlen", "hvad er forsinket", "hvordan går det med tavlen" | the same in Danish |
+
+"What is on **my** list" needs to know who is speaking, so it works in the Assist dialog, the app and
+`conversation.process` calls by a signed-in user, not from a voice satellite (satellites have no user).
+Details and limits: [docs/ASSIST_NOTES.md](docs/ASSIST_NOTES.md).
+
 ### Siri / Shortcuts
 
 In the Shortcuts app: **Dictate Text** then **Perform action** (Home Assistant app) with
@@ -102,6 +130,65 @@ source: siri
 The microphone button in the quick-add bar uses the browser's speech recognition. It only appears
 where the browser supports it, and most browsers want HTTPS (Home Assistant Cloud or your own
 certificate) for the microphone. It is a convenience; the Assist and Siri routes do not depend on it.
+
+## Checklists and photos
+
+Every issue can have a **checklist** (progress `3/5` on the card; epics show how many of their
+issues are done). Switch on "Move an issue to Done when its checklist is complete" in the options if you
+want that. From automations: `homeboard.add_checklist_item`, `check_item`, `remove_checklist_item`.
+
+**Photos and PDFs** (jpeg, png, webp, gif, pdf, up to 10 MB each) can be added in the issue dialog by
+button, paste or drag and drop, or taken from a camera:
+
+```yaml
+action: homeboard.attach_camera_snapshot
+data:
+  project: FIX
+  dedupe_key: health:offline:abc123    # or issue: FIX-4
+  camera: camera.front_door
+```
+
+Files are stored in `config/homeboard_files/` (never under `www`, so not public) and served only to
+signed-in users through short-lived signed links. The type is checked from the file's content, not its name,
+so a renamed program or an SVG is refused. Photos from phones may contain GPS data in their metadata: they are
+stored as uploaded.
+
+## Push to the right person
+
+Each Home Assistant person is notified on their own phone, detected from their `mobile_app` device tracker
+(or chosen in **Configure > People and push**):
+
+| You are told when | Option |
+|-------------------|--------|
+| an issue is assigned to you (not when you assign it to yourself) | `push_assigned` |
+| someone comments on an issue you own or reported | `push_comment` |
+| one of your issues is overdue or due soon | `push_overdue` |
+| an issue you reported is done (by someone else) | `push_reported_done` |
+| every morning: your open and overdue issues (off by default) | `digest_enabled`, `digest_time` |
+
+Pushes that are not urgent wait during **quiet hours** (22:00-07:00 by default) and, if rhythm learning is
+on, while you are away; they arrive together afterwards (more than 3 become one "N updates" push). Priority
+`highest` and the label `security` always go straight through. `homeboard.send_digest` sends a digest now
+(Developer tools), and nothing is sent when you have nothing open.
+
+## Insights: Homeboard learns
+
+Switch each feature on or off in **Configure > Learning**. Everything is plain statistics kept inside Home
+Assistant (nothing leaves your network), shown on the **Insights** tab with the evidence, and Homeboard
+**only suggests**: you accept or dismiss each one. **Forget** buttons wipe what is stored.
+
+| Feature | What it learns | What you get |
+|---------|---------------|--------------|
+| Smart defaults | which person, labels, priority and lead time go with similar titles | grey suggestion chips under the quick-add bar, one tap to apply (`homeboard.suggest`, or `suggest: true` on `quick_add`) |
+| Patterns | the same task created again and again at a regular rhythm | "Make 'Order bin bags' a recurring chore?" (accept creates it) |
+| Workload and speed | how long things take, per person, type and label; who is busiest | numbers on the Insights tab, and a "least busy person" hint when nothing else decides |
+| Sensor rhythms and noisy faults | how often each sensor normally reports; faults you keep closing or that keep coming back | a "stopped reporting" health issue for a sensor that went quiet, and "Stop reporting this?" suggestions |
+| Everyday rhythm (**off by default**) | for each person, hour by hour and weekday by weekday, whether they are home (counts only: no places, no coordinates) | a better morning-digest time, and pushes held while someone is away |
+
+Defaults, patterns and workload are computed live from the issues on the board, so they learn from what is
+there (deleting issues makes them forget). Sensor rhythms need about a dozen observed updates per sensor, and
+the rhythm needs roughly four weeks of data before it suggests anything. The rhythm feature reads each
+person's home / away state: tell the people it concerns before you switch it on.
 
 ## Dashboard cards
 
@@ -159,7 +246,9 @@ Every issue event carries `project`, `key`, `issue_id`, `summary`, `type`, `prio
 
 `create_issue`, `update_issue`, `move_issue`, `assign_issue`, `add_comment`, `delete_issue`,
 `quick_add`, `create_project`, `update_project`, `add_status`, `update_status`, `remove_status`,
-`create_recurring`, `update_recurring`, `delete_recurring`, `run_recurring`, `scan_health`.
+`create_recurring`, `update_recurring`, `delete_recurring`, `run_recurring`, `scan_health`,
+`add_checklist_item`, `check_item`, `remove_checklist_item`, `attach_camera_snapshot`, `suggest`,
+`send_digest`, `forget_learning`.
 Issue services take `issue: HOME-12` **or** `project` + `dedupe_key`. Most return a response
 (`key`, `id`, ...) you can use with `response_variable`.
 
@@ -278,13 +367,15 @@ Switch the whole thing off, or exclude entities and integrations, in **Configure
 | `sensor.<project>_<status>` | issues in one column (`category`, `wip` as attributes) |
 | `binary_sensor.<project>_has_overdue` | problem when anything is overdue |
 | `sensor.homeboard_open_issues`, `_overdue_issues`, `_issues_due_soon`, `_auto_generated_issues`, `_last_activity` | totals over all projects |
+| `sensor.homeboard_suggestions` | number of open learning suggestions |
 | `sensor.homeboard_<person>_assigned` | open issues per person (attributes: overdue, in progress, done in 7 days, next issues) |
 
 ## Options
 
-**Settings > Devices & services > Homeboard > Configure** has three short pages: general (due-soon
-window, auto-archive of done issues, sidebar title / icon / admin only, people with sensors),
-notifications, and smart-home health.
+**Settings > Devices & services > Homeboard > Configure** is a menu of short sections: general (due-soon
+window, auto-archive, checklist auto-done, sidebar title / icon / admin only, people with sensors),
+household alerts, people and push, photos / files / Assist, smart-home health, and learning.
+Each section saves when you submit it.
 
 ## Troubleshooting
 
@@ -321,7 +412,7 @@ pull request to [`hacs/default`](https://github.com/hacs/default).
 
 ## Not in version 1
 
-Sprints, burndown, subtasks and checklists, attachments, custom fields, per-transition rules,
+Sprints, burndown, custom fields, per-transition rules,
 time tracking, import from Jira / Kanboard / CSV and export, device triggers in the automation
 editor, per-person push targets, and automatic installation of Assist custom sentences.
 

@@ -6,8 +6,11 @@ import { BoardController } from "./board-controller.js";
 import { emptyState, icon } from "./components.js";
 import { adoptStyles, h, patch } from "./dom.js";
 import { EMPTY_FILTER, LANE_MODES, isFilterActive, normaliseFilter } from "./filters.js";
-import { t } from "./i18n.js";
+import { t, tn } from "./i18n.js";
 import { personName } from "./indexes.js";
+import { InsightsController } from "./insights-controller.js";
+import { learningEnabled } from "./insights.js";
+import { renderInsights } from "./insights-view.js";
 import { openIssueDialog, openNewIssueDialog } from "./issue-dialog.js";
 import { renderList } from "./list-view.js";
 import { overlay } from "./overlay.js";
@@ -24,7 +27,9 @@ const TABS = [
   { id: "board", icon: "mdi:view-column-outline" },
   { id: "backlog", icon: "mdi:tray-full" },
   { id: "list", icon: "mdi:format-list-bulleted" },
+  { id: "insights", icon: "mdi:lightbulb-on-outline" },
 ];
+const NO_PROJECT_TABS = ["summary", "insights"];
 const NARROW_WIDTH = 640;
 
 function loadUi() {
@@ -52,6 +57,7 @@ class HomeboardPanel extends HTMLElement {
     this.pendingIssue = null;
     this.frame = 0;
     this.board = new BoardController({ requestRender: () => this.requestRender() });
+    this.insights = new InsightsController({ requestRender: () => this.requestRender(), onSelectProject: (id) => this.setUi({ projectId: id }) });
     this.quickAdd = new QuickAdd({ getProject: () => this.currentProject()?.key, requestRender: () => this.requestRender() });
     this.resizeObserver = new ResizeObserver(([entry]) => {
       const compact = entry.contentRect.width < NARROW_WIDTH;
@@ -123,15 +129,23 @@ class HomeboardPanel extends HTMLElement {
 
   // ---- state -----------------------------------------------------------------
 
-  /** Deep links: ?issue=HOME-12, ?project=HOME, ?kiosk */
+  /** The tab that is actually shown: Insights only exists while a learning feature is on. */
+  get tab() {
+    const { tab } = this.ui;
+    return tab === "insights" && !learningEnabled(store.state.payload?.settings) ? "board" : tab;
+  }
+
+  /** Deep links: ?issue=HOME-12, ?project=HOME, ?kiosk, ?tab=insights */
   readUrl() {
     const params = new URLSearchParams(location.search);
     this.kiosk = params.has("kiosk");
     if (params.has("project")) this.pendingProject = params.get("project").toUpperCase();
     if (params.has("issue")) this.pendingIssue = params.get("issue").toUpperCase();
-    if (params.has("issue") || params.has("project")) {
+    if (TABS.some((tab) => tab.id === params.get("tab"))) this.ui.tab = params.get("tab");
+    if (params.has("issue") || params.has("project") || params.has("tab")) {
       params.delete("issue");
       params.delete("project");
+      params.delete("tab");
       const query = params.toString();
       history.replaceState(history.state, "", `${location.pathname}${query ? `?${query}` : ""}${location.hash}`);
     }
@@ -216,15 +230,15 @@ class HomeboardPanel extends HTMLElement {
         { class: [this.compact ? "narrow" : "", this.kiosk ? "kiosk" : ""].join(" ").trim(), key: "app" },
         this.kiosk ? this.kioskBar(index, project) : [this.topBar(index, project), this.tabBar()],
         !this.kiosk && project ? this.quickAddBar() : null,
-        !this.kiosk && index && this.ui.tab !== "summary" && project ? this.filterBar(index, project) : null,
-        h("main.content", { key: "content", class: `tab-${this.ui.tab}` }, this.content({ index, loading, error, project })),
+        !this.kiosk && index && !NO_PROJECT_TABS.includes(this.tab) && project ? this.filterBar(index, project) : null,
+        h("main.content", { key: "content", class: `tab-${this.tab}` }, this.content({ index, loading, error, project })),
       ),
     );
   }
 
   topBar(index, project) {
     const projects = index ? index.projects.filter((p) => !p.archived || p.id === project?.id) : [];
-    const select = this.ui.tab !== "summary" && projects.length > 1 ? this.projectSelect(projects, project) : null;
+    const select = !NO_PROJECT_TABS.includes(this.tab) && projects.length > 1 ? this.projectSelect(projects, project) : null;
     return h(
       "header.topbar",
       { key: "topbar", class: select ? "with-select" : "" },
@@ -284,22 +298,25 @@ class HomeboardPanel extends HTMLElement {
   }
 
   tabBar() {
+    const settings = store.state.payload?.settings;
+    const open = settings?.insights_open || 0;
     return h(
       "nav.tabs",
       { key: "tabs", role: "tablist", "aria-label": t("panel.title") },
-      TABS.map((tab) =>
+      TABS.filter((tab) => tab.id !== "insights" || learningEnabled(settings)).map((tab) =>
         h(
           "button.tab",
           {
             key: tab.id,
             type: "button",
             role: "tab",
-            "aria-selected": String(this.ui.tab === tab.id),
-            class: this.ui.tab === tab.id ? "active" : "",
+            "aria-selected": String(this.tab === tab.id),
+            class: this.tab === tab.id ? "active" : "",
             onclick: () => this.setUi({ tab: tab.id }),
           },
           icon(tab.icon),
           h("span", t(`tab.${tab.id}`)),
+          tab.id === "insights" && open ? h("span.count.badge", { "aria-label": tn("insights.badge", open) }, open) : null,
         ),
       ),
     );
@@ -358,7 +375,7 @@ class HomeboardPanel extends HTMLElement {
   content({ index, loading, error, project }) {
     if (error && !index) return emptyState("mdi:alert-circle-outline", t("error.load_title"), t("error.load", { message: error.message }));
     if (loading || !index) return h("div.loading", { role: "status" }, t("loading"));
-    if (!project && this.ui.tab !== "summary") {
+    if (!project && !NO_PROJECT_TABS.includes(this.tab)) {
       return emptyState(
         "mdi:view-column-outline",
         t("summary.no_projects"),
@@ -367,19 +384,25 @@ class HomeboardPanel extends HTMLElement {
       );
     }
     const now = new Date();
-    if (this.ui.tab === "summary") {
+    if (this.tab === "summary") {
       return renderSummary({
         payload: store.state.payload,
         index,
         now,
         showPeople: true,
         showHealth: true,
+        showInsights: true,
         showAttention: true,
         onOpenBoard: (projectId, filter) => this.openBoard(projectId, filter),
+        onOpenInsights: () => this.setUi({ tab: "insights" }),
         onOpenIssue: (issue) => openIssueDialog(issue.id),
       });
     }
-    if (this.ui.tab === "list") {
+    if (this.tab === "insights") {
+      this.insights.ensure(store.state.payload.settings.insights_open ?? 0);
+      return renderInsights({ controller: this.insights, index, isAdmin: store.isAdmin });
+    }
+    if (this.tab === "list") {
       return renderList({
         index,
         project,
@@ -395,7 +418,7 @@ class HomeboardPanel extends HTMLElement {
       project,
       filter: this.filter,
       laneMode: this.ui.laneMode,
-      layout: this.ui.tab === "backlog" ? "backlog" : "board",
+      layout: this.tab === "backlog" ? "backlog" : "board",
       showBacklog: this.ui.showBacklog,
       narrow: this.compact,
       kiosk: this.kiosk,

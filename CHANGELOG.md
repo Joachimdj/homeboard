@@ -4,6 +4,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions follo
 [Semantic Versioning](https://semver.org/); while the project is 0.x only the patch number is bumped
 for small changes.
 
+## [0.2.0] - 2026-11-23
+
+### Added
+- **Push to the right person**: per-person notifications on their own phone (detected from the
+  `mobile_app` tracker or chosen in the options) for assignments, comments, deadlines and issues you reported
+  being done; an optional morning digest (`homeboard.send_digest`); quiet hours; non-urgent pushes are held and
+  delivered together.
+- **Assist** (opt-in): six intents in English and Danish (add, overdue, my list, what is X working on, mark
+  done, board status) with sentence files installed only when switched on.
+- **Checklists** on issues with progress on the card, epic progress, optional auto-done, services and websocket
+  commands.
+- **Photos and PDFs** on issues (upload, paste, drag and drop, camera snapshot via
+  `homeboard.attach_camera_snapshot`), stored privately in `config/homeboard_files` and served through
+  signed links; content-checked, size-limited, thumbnails.
+- **Learning** (local, explainable, suggestions only, with an Insights tab and Forget buttons): smart defaults for
+  new issues, recurring-chore suggestions from repeated tasks, workload and speed, sensor rhythms (a sensor that
+  goes quiet becomes a health issue) and noisy-fault suggestions, and an opt-in home / away rhythm that improves
+  the digest time.
+- Options are now a menu of sections.
+- Services `add_checklist_item`, `check_item`, `remove_checklist_item`, `attach_camera_snapshot`, `suggest`,
+  `send_digest`, `forget_learning`; sensor `sensor.homeboard_suggestions`.
+
 ## [0.1.0] - 2026-11-22
 
 First version.

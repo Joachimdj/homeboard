@@ -16,25 +16,79 @@
   "options": {
     "step": {
       "init": {
+        "title": "Homeboard",
+        "description": "Vælg hvad der skal ændres. Hver sektion gemmes, når du sender den.",
+        "menu_options": {
+          "general": "Generelt",
+          "alerts": "Husstandens beskeder",
+          "people": "Personer og push",
+          "files": "Billeder, filer og Assist",
+          "health": "Smart home-sundhed",
+          "learning": "Læring"
+        }
+      },
+      "general": {
         "title": "Homeboard: generelt",
         "data": {
           "due_soon_hours": "Snart forfalden-vindue (timer)",
           "auto_archive_done_days": "Arkivér færdige opgaver efter (dage, 0 = aldrig)",
+          "checklist_autodone": "Flyt en opgave til Færdig, når tjeklisten er færdig",
           "panel_title": "Titel i sidebjælken",
           "panel_icon": "Ikon i sidebjælken",
           "panel_admin_only": "Vis kun panelet for administratorer",
           "tracked_people": "Personer med egne sensorer (tom = alle)"
         }
       },
-      "notifications": {
-        "title": "Homeboard: notifikationer",
-        "description": "Push-beskeder sendes til de notify-tjenester du vælger, fx notify.mobile_app_din_telefon. Alt mere avanceret er en almindelig automatisering på homeboard_*-hændelserne.",
+      "alerts": {
+        "title": "Homeboard: husstandens beskeder",
+        "description": "Push-beskeder til de notify-tjenester du vælger, fx notify.mobile_app_din_telefon. Beskeder til den der har fået en opgave tildelt ligger under Personer og push.",
         "data": {
           "notify_services": "Notify-tjenester",
           "notify_done": "Giv besked når en opgave er færdig",
           "notify_overdue": "Giv besked når en opgave er forfalden",
           "notify_due_soon": "Giv besked når en opgave snart forfalder",
           "notify_health": "Giv besked om nye automatiske opgaver med høj prioritet"
+        }
+      },
+      "people": {
+        "title": "Homeboard: personer og push",
+        "description": "Hver person får besked på sin egen telefon om opgaver der vedrører vedkommende. Ikke-hastende beskeder venter i stilletimer (og mens nogen er ude, hvis rytmelæring er slået til). Tider er TT:MM.",
+        "data": {
+          "push_assigned": "Giv besked når en opgave tildeles",
+          "push_comment": "Giv besked om kommentarer på ens opgaver",
+          "push_overdue": "Giv besked når ens opgaver er forfaldne eller snart forfalder",
+          "push_reported_done": "Giv besked når en opgave man har oprettet er færdig",
+          "digest_enabled": "Send en morgenoversigt",
+          "digest_time": "Tidspunkt for oversigten",
+          "quiet_start": "Stilletimer starter",
+          "quiet_end": "Stilletimer slutter"
+        }
+      },
+      "person": {
+        "title": "Telefon til {person}",
+        "description": "Hvilken notify-tjeneste når {person}? Lad stå tom for at finde den ud fra enhedssporingen.",
+        "data": {
+          "notify_service": "Notify-tjeneste"
+        }
+      },
+      "files": {
+        "title": "Homeboard: billeder, filer og Assist",
+        "description": "Vedhæftninger gemmes privat i config/homeboard_files. Assist-sætninger skrives til homeboard.yaml-filer i config/custom_sentences (én mappe pr. sprog) og fjernes igen, når de slås fra.",
+        "data": {
+          "attachments_enabled": "Tillad billeder og PDF på opgaver",
+          "max_upload_mb": "Største upload (MB)",
+          "assist_sentences": "Installér Assist-sætninger"
+        }
+      },
+      "learning": {
+        "title": "Homeboard: læring",
+        "description": "Homeboard lærer af tavlen og kommer med forslag (du bestemmer altid). Alt bliver i Home Assistant og kan glemmes på siden Indsigt. Rytme læser om hver person er hjemme eller ude time for time og er slået fra, til du slår den til.",
+        "data": {
+          "learn_defaults": "Smarte standardværdier (ansvarlig, etiketter, prioritet, frist)",
+          "learn_patterns": "Find gentagne opgaver og foreslå tilbagevendende opgaver",
+          "learn_workload": "Arbejdsbyrde og hastighed",
+          "learn_health": "Sensorrytmer og støjende fejl",
+          "learn_rhythm": "Hverdagsrytme (hjemme/ude pr. time)"
         }
       },
       "health": {
@@ -87,6 +141,9 @@
       },
       "auto_issues": {
         "name": "Automatisk oprettede opgaver"
+      },
+      "suggestions": {
+        "name": "Forslag"
       },
       "total_last_activity": {
         "name": "Seneste aktivitet"
@@ -155,6 +212,15 @@
         "household": "Husholdning",
         "software": "Software",
         "blank": "Tom"
+      }
+    },
+    "learning_feature": {
+      "options": {
+        "defaults": "Smarte standardværdier",
+        "patterns": "Mønstre",
+        "workload": "Arbejdsbyrde",
+        "health": "Sundhed",
+        "rhythm": "Hverdagsrytme"
       }
     }
   },
@@ -670,6 +736,132 @@
         "dry_run": {
           "name": "Tørløb",
           "description": "Rapportér kun hvad der ville ske, uden at ændre noget."
+        }
+      }
+    },
+    "add_checklist_item": {
+      "name": "Tilføj tjeklistepunkt",
+      "description": "Tilføjer et punkt til en opgaves tjekliste.",
+      "fields": {
+        "issue": {
+          "name": "Opgave",
+          "description": "Nøgle (HOME-12) eller id. Lad den stå tom, hvis du bruger projekt + dedupe-nøgle."
+        },
+        "project": {
+          "name": "Projekt",
+          "description": "Projektnøgle eller id."
+        },
+        "dedupe_key": {
+          "name": "Dedupe-nøgle",
+          "description": "Stabil nøgle, fx battery_front_door. En åben opgave med samme nøgle oprettes ikke igen."
+        },
+        "text": {
+          "name": "Tekst",
+          "description": "Teksten der skal fortolkes."
+        }
+      }
+    },
+    "check_item": {
+      "name": "Afkryds tjeklistepunkt",
+      "description": "Sætter (eller fjerner) flueben ved et tjeklistepunkt ud fra tekst eller id.",
+      "fields": {
+        "issue": {
+          "name": "Opgave",
+          "description": "Nøgle (HOME-12) eller id. Lad den stå tom, hvis du bruger projekt + dedupe-nøgle."
+        },
+        "project": {
+          "name": "Projekt",
+          "description": "Projektnøgle eller id."
+        },
+        "dedupe_key": {
+          "name": "Dedupe-nøgle",
+          "description": "Stabil nøgle, fx battery_front_door. En åben opgave med samme nøgle oprettes ikke igen."
+        },
+        "item": {
+          "name": "Punkt",
+          "description": "Punktets tekst eller id."
+        },
+        "done": {
+          "name": "Færdig",
+          "description": "True for at sætte flueben (standard), false for at fjerne det."
+        }
+      }
+    },
+    "remove_checklist_item": {
+      "name": "Fjern tjeklistepunkt",
+      "description": "Fjerner et punkt fra en opgaves tjekliste.",
+      "fields": {
+        "issue": {
+          "name": "Opgave",
+          "description": "Nøgle (HOME-12) eller id. Lad den stå tom, hvis du bruger projekt + dedupe-nøgle."
+        },
+        "project": {
+          "name": "Projekt",
+          "description": "Projektnøgle eller id."
+        },
+        "dedupe_key": {
+          "name": "Dedupe-nøgle",
+          "description": "Stabil nøgle, fx battery_front_door. En åben opgave med samme nøgle oprettes ikke igen."
+        },
+        "item": {
+          "name": "Punkt",
+          "description": "Punktets tekst eller id."
+        }
+      }
+    },
+    "attach_camera_snapshot": {
+      "name": "Vedhæft kamerabillede",
+      "description": "Tager et stillbillede fra et kamera og vedhæfter det til en opgave.",
+      "fields": {
+        "issue": {
+          "name": "Opgave",
+          "description": "Nøgle (HOME-12) eller id. Lad den stå tom, hvis du bruger projekt + dedupe-nøgle."
+        },
+        "project": {
+          "name": "Projekt",
+          "description": "Projektnøgle eller id."
+        },
+        "dedupe_key": {
+          "name": "Dedupe-nøgle",
+          "description": "Stabil nøgle, fx battery_front_door. En åben opgave med samme nøgle oprettes ikke igen."
+        },
+        "camera": {
+          "name": "Kamera",
+          "description": "Kameraet der skal tage billedet."
+        }
+      }
+    },
+    "suggest": {
+      "name": "Foreslå standardværdier",
+      "description": "Returnerer hvad Homeboard har lært om en titel: ansvarlig, etiketter, prioritet, fristforskydning (eller null).",
+      "fields": {
+        "text": {
+          "name": "Tekst",
+          "description": "Teksten der skal fortolkes."
+        },
+        "project": {
+          "name": "Projekt",
+          "description": "Projektnøgle eller id."
+        }
+      }
+    },
+    "send_digest": {
+      "name": "Send oversigt nu",
+      "description": "Sender en persons åbne og forfaldne opgaver til telefonen med det samme. Der sendes intet, hvis personen ikke har noget åbent.",
+      "fields": {
+        "person": {
+          "name": "Person",
+          "description": "Lad stå tom for alle."
+        }
+      }
+    },
+    "forget_learning": {
+      "name": "Glem det lærte",
+      "description": "Glemmer hvad en læringsfunktion har gemt (sensorrytmer, hjemme/ude-rytme, afviste forslag). Standardværdier, mønstre og arbejdsbyrde beregnes live ud fra tavlen.",
+      "fields": {
+        "feature": {
+          "name": "Funktion",
+          "description": "Lad stå tom for alt."
         }
       }
     }

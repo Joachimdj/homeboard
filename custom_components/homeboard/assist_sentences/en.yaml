@@ -1,0 +1,68 @@
+# Managed by Homeboard, do not edit
+# Installed by the "Install Assist sentences" option of Homeboard and removed again when the option is
+# switched off or the integration is removed. To change the wording, copy this file (without the line
+# above) to another name in this folder, edit the copy and then switch the option off.
+language: "en"
+intents:
+  HomeboardAdd:
+    data:
+      - sentences:
+          - "add {hb_item:item} to [<hb_the>] <hb_board>"
+          - "put {hb_item:item} on [<hb_the>] <hb_board>"
+          - "add {hb_item:item} to [<hb_the>] {hb_project:project} (board|project)"
+          - "put {hb_item:item} on [<hb_the>] {hb_project:project} (board|project)"
+          - "add {hb_item:item} to project {hb_project:project}"
+  HomeboardOverdue:
+    data:
+      - sentences:
+          - "(what's|whats|what is|what are) overdue [on [<hb_the>] <hb_board>]"
+          - "(what|which) (issues|tasks|things) are overdue [on [<hb_the>] <hb_board>]"
+          - "is [there] anything overdue [on [<hb_the>] <hb_board>]"
+          - "are there any [overdue] (issues|tasks) [overdue] [on [<hb_the>] <hb_board>]"
+          - "(do I|do we) have (anything|any issues|any tasks) overdue"
+          - "(show|list|read) [me] [<hb_the>] overdue (issues|tasks)"
+          - "how many (issues|tasks) are overdue"
+  HomeboardMine:
+    data:
+      - sentences:
+          - "(what's|whats|what is) on my (list|to do list|plate|board)"
+          - "what am I working on"
+          - "what do I have (to do|on|open|left)"
+          - "what have I got (to do|on|open|left)"
+          - "what are my (issues|tasks|to dos)"
+          - "(show|list|read) [me] my (issues|tasks|list)"
+          - "(what|which) (issues|tasks) are assigned to me"
+  HomeboardPerson:
+    data:
+      - sentences:
+          - "(what's|whats|what is) {hb_person:person} working on"
+          - "what does {hb_person:person} have (to do|on|open|left)"
+          - "(what's|whats|what is) on {hb_person:person} (list|plate)"
+          - "(what|which) (issues|tasks) are assigned to {hb_person:person}"
+  HomeboardDone:
+    data:
+      - sentences:
+          - "mark {hb_item:item} as <hb_done>"
+          - "mark {hb_item:item} <hb_done>"
+          - "{hb_item:item} is <hb_done>"
+          - "(I finished|I have finished|I've finished|I'm done with|I am done with) {hb_item:item}"
+  HomeboardStatus:
+    data:
+      - sentences:
+          - "(how is|how's|hows) [<hb_the>] <hb_board> (doing|going)"
+          - "(what's|whats|what is) [<hb_the>] <hb_board> status"
+          - "<hb_board> (status|summary)"
+          - "(what's|whats|what is) on (the|our) <hb_board>"
+          - "[give me] [<hb_the>] <hb_board> (status|summary|update)"
+          - "how many (issues|tasks) are (open|left)"
+expansion_rules:
+  hb_the: "(the|my|our)"
+  hb_board: "(board|homeboard|kanban board|kanban)"
+  hb_done: "(done|complete|completed|finished)"
+lists:
+  hb_item:
+    wildcard: true
+  hb_project:
+    wildcard: true
+  hb_person:
+    wildcard: true

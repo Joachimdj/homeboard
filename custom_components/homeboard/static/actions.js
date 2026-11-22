@@ -22,6 +22,10 @@ async function run(command, params, optimistic) {
   }
 }
 
+function counted(issueId, { done, total }) {
+  return (payload) => patchIssue(payload, issueId, { checklist_done: done, checklist_total: total });
+}
+
 /** Payload field `type` is called `issue_type` on the wire. */
 function toWire(fields) {
   const { type, ...rest } = fields;
@@ -67,8 +71,8 @@ export const actions = {
     return run("homeboard/issue/comment", { issue_id: issueId, text });
   },
 
-  quickAdd(text, project) {
-    return run("homeboard/quick_add", { text, ...(project ? { project } : {}) });
+  quickAdd(text, project, { suggest = false } = {}) {
+    return run("homeboard/quick_add", { text, ...(project ? { project } : {}), ...(suggest ? { suggest: true } : {}) });
   },
 
   createProject(fields) {
@@ -113,6 +117,52 @@ export const actions = {
 
   runRecurring(recurringId) {
     return run("homeboard/recurring/run_now", { recurring_id: recurringId });
+  },
+
+  // `counts` = { done, total } after the change, shown on the cards before the push arrives.
+  addChecklistItem(issueId, text, counts) {
+    return run("homeboard/checklist/add", { issue_id: issueId, text }, counts && counted(issueId, counts));
+  },
+
+  updateChecklistItem(issueId, itemId, fields, counts) {
+    return run("homeboard/checklist/update", { issue_id: issueId, item_id: itemId, ...fields }, counts && counted(issueId, counts));
+  },
+
+  removeChecklistItem(issueId, itemId, counts) {
+    return run("homeboard/checklist/remove", { issue_id: issueId, item_id: itemId }, counts && counted(issueId, counts));
+  },
+
+  reorderChecklist(issueId, itemIds) {
+    return run("homeboard/checklist/reorder", { issue_id: issueId, item_ids: itemIds });
+  },
+
+  removeAttachment(issueId, attachmentId) {
+    return run("homeboard/attachment/remove", { issue_id: issueId, attachment_id: attachmentId });
+  },
+
+  snapshot(issueId, entityId) {
+    return run("homeboard/attachment/snapshot", { issue_id: issueId, entity_id: entityId });
+  },
+
+  acceptSuggestion(suggestionId) {
+    return run("homeboard/insights/accept", { suggestion_id: suggestionId });
+  },
+
+  dismissSuggestion(suggestionId) {
+    return run("homeboard/insights/dismiss", { suggestion_id: suggestionId });
+  },
+
+  forgetLearning(feature) {
+    return run("homeboard/insights/forget", feature ? { feature } : {});
+  },
+
+  /** Plain reads: callers handle failures themselves. */
+  getInsights() {
+    return store.call("homeboard/insights/get");
+  },
+
+  suggest(text, project) {
+    return store.call("homeboard/suggest", { text, ...(project ? { project } : {}) });
   },
 
   /** Plain read (no toast on failure is wanted by callers that handle it themselves). */

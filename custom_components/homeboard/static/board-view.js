@@ -1,7 +1,7 @@
 // Board and backlog rendering. Pure vnode builders; the BoardController in
 // board-controller.js owns the state (drag, collapsed lanes) and the events.
 
-import { autoChip, avatar, dueChip, emptyState, icon, labelChip, priorityIcon, typeIcon } from "./components.js";
+import { attachmentChip, autoChip, avatar, checklistChip, dueChip, emptyState, epicBar, icon, labelChip, priorityIcon, typeIcon } from "./components.js";
 import { h } from "./dom.js";
 import { t } from "./i18n.js";
 import { categoryOf, personName } from "./indexes.js";
@@ -98,11 +98,14 @@ function issueCard(issue, ctx) {
     },
     h("div.card-top", typeIcon(issue.type), h("span.key", issue.key), h("span.spacer"), priorityIcon(issue.priority), menuButton(issue, ctx)),
     h("div.card-summary", issue.summary),
+    epicBar(issue),
     labels.length || issue.source === "health" ? h("div.card-labels", issue.source === "health" ? autoChip() : null, labels.filter((l) => l !== "auto").map((l) => labelChip(l))) : null,
     h(
       "div.card-foot",
       dueChip(issue, now),
       epic ? h("span.chip.epic", { title: epic.summary }, icon("mdi:lightning-bolt"), epic.key) : null,
+      checklistChip(issue),
+      attachmentChip(issue),
       issue.comment_count ? h("span.chip.plain", { title: t("comments") }, icon("mdi:comment-outline"), issue.comment_count) : null,
       h("span.spacer"),
       avatar(index, issue.assignee, "sm"),
@@ -132,6 +135,8 @@ function issueRow(issue, ctx) {
     h("span.row-summary", issue.summary),
     issue.source === "health" ? autoChip() : null,
     labels.length ? h("span.row-labels", labels.map((l) => labelChip(l))) : null,
+    checklistChip(issue),
+    attachmentChip(issue),
     dueChip(issue, now),
     priorityIcon(issue.priority),
     avatar(index, issue.assignee, "sm"),

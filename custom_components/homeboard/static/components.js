@@ -1,7 +1,8 @@
 // Small view helpers (vnode builders) shared by panel, dialogs and cards.
 
+import { epicProgress, issueChecklist } from "./checklist.js";
 import { h } from "./dom.js";
-import { t } from "./i18n.js";
+import { t, tn } from "./i18n.js";
 import { personName } from "./indexes.js";
 import { PRIORITY_META, TYPE_META, avatarColor, formatDue, initials, labelColor } from "./util.js";
 
@@ -53,8 +54,45 @@ export function dueChip(issue, now) {
   );
 }
 
+/** "3/5" chip for an issue with a checklist. */
+export function checklistChip(issue) {
+  const progress = issueChecklist(issue);
+  if (!progress) return null;
+  return h(
+    "span.chip.plain.checklist",
+    { class: progress.done === progress.total ? "complete" : "", title: t("checklist.chip_title", progress) },
+    icon("mdi:format-list-checks"),
+    `${progress.done}/${progress.total}`,
+  );
+}
+
+export function attachmentChip(issue) {
+  if (!issue.attachment_count) return null;
+  return h("span.chip.plain", { title: tn("attachments.chip_title", issue.attachment_count) }, icon("mdi:paperclip"), issue.attachment_count);
+}
+
+/** Progress bar over the child issues of an epic. */
+export function epicBar(issue) {
+  const progress = epicProgress(issue);
+  if (!progress) return null;
+  return h("div.epic-progress", progressBar(progress.percent, t("epic.progress", progress)), h("span.muted.small", `${progress.done}/${progress.total}`));
+}
+
 export function autoChip() {
   return h("span.chip.auto", { title: t("auto.title") }, icon("mdi:robot-outline"), t("auto.chip"));
+}
+
+/** Thin progress bar (checklists, epics). `label` is the accessible text. */
+export function progressBar(percent, label) {
+  return h(
+    "div.progress",
+    { role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(percent), "aria-label": label, title: label },
+    h("span.progress-fill", { style: { width: `${percent}%` }, class: percent === 100 ? "complete" : "" }),
+  );
+}
+
+export function spinner(label) {
+  return h("span.spinner", { role: "status", "aria-label": label });
 }
 
 export function emptyState(iconName, title, text, action) {

@@ -571,3 +571,116 @@ scan_health:
       example: true
       selector:
         boolean: {}
+add_checklist_item:
+  fields:
+    issue:
+      example: HOME-12
+      selector:
+        text: {}
+    project:
+      example: HOME
+      selector:
+        text: {}
+    dedupe_key:
+      example: battery_front_door
+      selector:
+        text: {}
+    text:
+      required: true
+      example: Book hotel
+      selector:
+        text: {}
+check_item:
+  fields:
+    issue:
+      example: HOME-12
+      selector:
+        text: {}
+    project:
+      example: HOME
+      selector:
+        text: {}
+    dedupe_key:
+      example: battery_front_door
+      selector:
+        text: {}
+    item:
+      required: true
+      example: Book hotel
+      selector:
+        text: {}
+    done:
+      example: true
+      selector:
+        boolean: {}
+remove_checklist_item:
+  fields:
+    issue:
+      example: HOME-12
+      selector:
+        text: {}
+    project:
+      example: HOME
+      selector:
+        text: {}
+    dedupe_key:
+      example: battery_front_door
+      selector:
+        text: {}
+    item:
+      required: true
+      example: Book hotel
+      selector:
+        text: {}
+attach_camera_snapshot:
+  fields:
+    issue:
+      example: HOME-12
+      selector:
+        text: {}
+    project:
+      example: HOME
+      selector:
+        text: {}
+    dedupe_key:
+      example: battery_front_door
+      selector:
+        text: {}
+    camera:
+      required: true
+      example: camera.front_door
+      selector:
+        entity:
+          domain: camera
+suggest:
+  fields:
+    text:
+      required: true
+      example: Order new bin bags
+      selector:
+        text: {}
+    project:
+      example: HOME
+      selector:
+        text: {}
+send_digest:
+  fields:
+    person:
+      example: person.joachim
+      selector:
+        entity:
+          domain: person
+forget_learning:
+  fields:
+    feature:
+      example: rhythm
+      selector:
+        select:
+          options:
+          - defaults
+          - patterns
+          - workload
+          - health
+          - rhythm
+          mode: dropdown
+          translation_key: learning_feature

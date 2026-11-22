@@ -19,16 +19,25 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from . import model, recurrence
+from .checklist import ChecklistMixin, checklist_counts
 from .const import (
     ACTIVITY_LIMIT,
     COMMENT_MAX_LENGTH,
+    CONF_ATTACHMENTS_ENABLED,
     CONF_AUTO_ARCHIVE_DAYS,
     CONF_DUE_SOON_HOURS,
     CONF_HEALTH_ENABLED,
+    CONF_LEARN_DEFAULTS,
+    CONF_LEARN_HEALTH,
+    CONF_LEARN_PATTERNS,
+    CONF_LEARN_RHYTHM,
+    CONF_LEARN_WORKLOAD,
+    CONF_MAX_UPLOAD_MB,
     CONF_PANEL_TITLE,
     CONF_TRACKED_PEOPLE,
     DEFAULT_AUTO_ARCHIVE_DAYS,
     DEFAULT_DUE_SOON_HOURS,
+    DEFAULT_MAX_UPLOAD_MB,
     DEFAULT_PANEL_TITLE,
     EVENT_ISSUE_ASSIGNED,
     EVENT_ISSUE_COMMENTED,
@@ -98,7 +107,7 @@ def _utc_iso() -> str:
     return dt_util.utcnow().isoformat(timespec="seconds")
 
 
-class HomeboardData:
+class HomeboardData(ChecklistMixin):
     """All projects, issues and recurring chores, plus the rules that change them."""
 
     def __init__(
@@ -119,6 +128,14 @@ class HomeboardData:
         self.version = "0"
         self.health: Any = None
         """The ``HealthMonitor`` (set by the integration setup)."""
+        self.files: Any = None
+        """The ``FileStore`` (attachments)."""
+        self.learning: Any = None
+        """The ``LearningEngine`` (insights)."""
+        self.push: Any = None
+        """The ``PushNotifier`` (per-person pushes and digest)."""
+        self.learning_data: dict[str, Any] = {}
+        """Persisted private state of the learning engine."""
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -128,12 +145,17 @@ class HomeboardData:
         self.projects = raw.get("projects", {})
         self.issues = raw.get("issues", {})
         self.recurring = raw.get("recurring", {})
+        self.learning_data = raw.get("learning", {})
+        for issue in self.issues.values():  # documents written before 0.2
+            issue.setdefault("checklist", [])
+            issue.setdefault("attachments", [])
 
     def _as_dict(self) -> dict[str, Any]:
         return {
             "projects": self.projects,
             "issues": self.issues,
             "recurring": self.recurring,
+            "learning": self.learning_data,
         }
 
     async def async_save_now(self) -> None:
@@ -177,6 +199,18 @@ class HomeboardData:
             "panel_title": self.options.get(CONF_PANEL_TITLE, DEFAULT_PANEL_TITLE),
             "auto_archive_done_days": self.auto_archive_days,
             "health_enabled": bool(self.options.get(CONF_HEALTH_ENABLED, True)),
+            "learning": {
+                "defaults": bool(self.options.get(CONF_LEARN_DEFAULTS, True)),
+                "patterns": bool(self.options.get(CONF_LEARN_PATTERNS, True)),
+                "workload": bool(self.options.get(CONF_LEARN_WORKLOAD, True)),
+                "health": bool(self.options.get(CONF_LEARN_HEALTH, True)),
+                "rhythm": bool(self.options.get(CONF_LEARN_RHYTHM, False)),
+            },
+            "attachments": {
+                "enabled": bool(self.options.get(CONF_ATTACHMENTS_ENABLED, True)),
+                "max_mb": int(self.options.get(CONF_MAX_UPLOAD_MB, DEFAULT_MAX_UPLOAD_MB)),
+            },
+            "insights_open": self.learning.open_count() if self.learning else 0,
         }
 
     # ------------------------------------------------------------------ people
@@ -442,6 +476,7 @@ class HomeboardData:
         event = self._project_event(project, "deleted")
         removed = [i for i, v in self.issues.items() if v["project_id"] == project["id"]]
         for issue_id in removed:
+            self._drop_files(self.issues[issue_id])
             del self.issues[issue_id]
         for rec_id in [r for r, v in self.recurring.items() if v["project_id"] == project["id"]]:
             del self.recurring[rec_id]
@@ -643,6 +678,8 @@ class HomeboardData:
             "overdue_notified": False,
             "due_soon_notified": False,
             "auto_resolved": False,
+            "checklist": [],
+            "attachments": [],
             "comments": [],
             "activity": [],
         }
@@ -902,11 +939,17 @@ class HomeboardData:
         """Delete an issue for good."""
         issue = self.resolve_issue(ref)
         data = self._issue_event(issue, actor, check_source(source))
+        self._drop_files(issue)
         del self.issues[issue["id"]]
         for other in self.issues.values():
             if other["parent"] == issue["id"]:
                 other["parent"] = None
         self._commit([(EVENT_ISSUE_DELETED, data)])
+
+    def _drop_files(self, issue: dict[str, Any]) -> None:
+        """Remove the stored files of an issue that is going away."""
+        if self.files is not None and issue.get("attachments"):
+            self.files.async_delete_files([a["id"] for a in issue["attachments"]])
 
     def list_issues(
         self,
@@ -969,22 +1012,65 @@ class HomeboardData:
         project: str | None = None,
         actor: str | None = None,
         source: str = "service",
+        suggest: bool = False,
     ) -> tuple[dict[str, Any], Parsed]:
-        """Parse a quick-add line and create the issue."""
+        """Parse a quick-add line and create the issue.
+
+        With ``suggest`` the fields the text left open are filled from the
+        learned smart defaults (assignee, labels, priority, due date).
+        """
         parsed = self.parse_quick_add(text, project=project, actor=actor)
         assert parsed.project is not None
+        assignee: Any = parsed.assignee if parsed.assignee else UNSET
+        labels = list(parsed.labels)
+        priority = parsed.priority
+        due = parsed.due
+        if suggest and self.learning is not None:
+            suggestion = self.suggestion_for(parsed)
+            if suggestion:
+                if assignee is UNSET and suggestion["assignee"]:
+                    assignee = suggestion["assignee"]
+                labels = labels + [x for x in suggestion["labels"] if x not in labels]
+                priority = priority or suggestion["priority"]
+                if due is None and suggestion["due_in_days"] is not None:
+                    due = (
+                        dt_util.now().date() + timedelta(days=suggestion["due_in_days"])
+                    ).isoformat()
         issue, _created = self.create_issue(
             parsed.project,
             parsed.summary,
             type=parsed.type,
-            priority=parsed.priority,
-            assignee=parsed.assignee if parsed.assignee else UNSET,
-            labels=parsed.labels,
-            due=parsed.due,
+            priority=priority,
+            assignee=assignee,
+            labels=labels,
+            due=due,
             actor=actor,
             source=source,
         )
         return issue, parsed
+
+    def suggestion_for(self, parsed: Parsed) -> dict[str, Any] | None:
+        """Return the learned suggestion for a parsed quick-add line (None = off / nothing)."""
+        if self.learning is None:
+            return None
+        skip = {
+            name
+            for name, given in (
+                ("assignee", parsed.assignee),
+                ("labels", parsed.labels),
+                ("priority", parsed.priority),
+                ("due", parsed.due),
+            )
+            if given
+        }
+        project = self.projects.get(parsed.project) if parsed.project else None
+        project_id = project["id"] if project else None
+        if project_id is None and parsed.project:
+            try:
+                project_id = self.resolve_project(parsed.project)["id"]
+            except NotFoundError:
+                project_id = None
+        return self.learning.suggest(parsed.summary, project_id=project_id, skip=skip)
 
     # ------------------------------------------------------------------ recurring
 
@@ -1207,16 +1293,36 @@ class HomeboardData:
                 "overdue_notified",
                 "due_soon_notified",
                 "auto_resolved",
+                "checklist",
+                "attachments",
             )
         }
-        view.update(overdue=overdue, due_soon=due_soon, comment_count=len(issue["comments"]))
+        done, total = checklist_counts(issue)
+        view.update(
+            overdue=overdue,
+            due_soon=due_soon,
+            comment_count=len(issue["comments"]),
+            checklist_total=total,
+            checklist_done=done,
+            attachment_count=len(issue["attachments"]),
+        )
+        if issue["type"] == "epic":
+            children = [
+                i for i in self.issues.values() if i["parent"] == issue["id"] and not i["archived"]
+            ]
+            view["epic_total"] = len(children)
+            view["epic_done"] = sum(1 for c in children if self.category(c) == "done")
         return view
 
     def issue_detail(self, issue: dict[str, Any]) -> dict[str, Any]:
-        """Return one issue with comments and activity."""
+        """Return one issue with comments, activity, checklist and attachments."""
         view = self.issue_view(issue)
         view["comments"] = list(issue["comments"])
         view["activity"] = list(issue["activity"])
+        view["checklist"] = [dict(item) for item in issue["checklist"]]
+        view["attachments"] = (
+            self.files.describe(issue["attachments"]) if self.files is not None else []
+        )
         return view
 
     def stats(self, now: datetime | None = None) -> dict[str, Any]:

@@ -212,3 +212,171 @@ test("subscribers get the full payload after every change", () => {
   run(backend, "issue/create", { project_id: project.id, summary: "Three" });
   assert.deepEqual(seen, [base + 1, base + 2]);
 });
+
+// ---- version 0.2 (PROTOCOL section 10) ---------------------------------------------------------
+
+const issueOf = (backend, key) => [...backend.issues.values()].find((i) => i.key === key);
+
+test("0.2 payload: settings, counters, epic roll-up", () => {
+  const payload = makeBackend().payload();
+  assert.deepEqual(payload.settings.learning, { defaults: true, patterns: true, workload: true, health: true, rhythm: false });
+  assert.deepEqual(payload.settings.attachments, { enabled: true, max_mb: 10 });
+  assert.equal(payload.settings.insights_open, 2);
+  const beds = payload.issues.find((i) => i.key === "HOME-14");
+  assert.equal(beds.checklist_total, 5);
+  assert.equal(beds.checklist_done, 3);
+  assert.ok(payload.issues.every((i) => !("checklist" in i) && !("attachments" in i)), "items and files are detail only");
+  const epic = payload.issues.find((i) => i.type === "epic");
+  assert.equal(epic.epic_total, 4);
+  assert.equal(epic.epic_done, 1);
+  assert.equal("epic_total" in beds, false);
+});
+
+test("issue/get has the checklist items and attachments with signed urls", () => {
+  const backend = makeBackend();
+  const full = run(backend, "issue/get", { issue_id: issueOf(backend, "HOME-9").id });
+  assert.equal(full.checklist.length, 2);
+  assert.equal(full.attachments.length, 3);
+  const [picture, , pdf] = full.attachments;
+  assert.match(picture.url, /^blob:/);
+  assert.match(picture.thumb_url, /^blob:/);
+  assert.notEqual(picture.thumb_url, picture.url);
+  assert.equal(pdf.mime, "application/pdf");
+  assert.equal(pdf.thumb_url, null);
+  assert.equal(picture.source, "upload");
+});
+
+test("checklist commands: add, update, remove, reorder, with activity and validation", () => {
+  const backend = makeBackend();
+  const issue = issueOf(backend, "HOME-12");
+  const item = run(backend, "checklist/add", { issue_id: issue.id, text: "  Order a bulb " });
+  assert.equal(item.text, "Order a bulb");
+  assert.equal(item.done, false);
+  const second = run(backend, "checklist/add", { issue_id: issue.id, text: "Fit the bulb" });
+  assert.deepEqual(run(backend, "checklist/update", { issue_id: issue.id, item_id: item.id, done: true }), { ...item, done: true });
+  assert.equal(run(backend, "checklist/update", { issue_id: issue.id, item_id: second.id, text: "Fit it" }).text, "Fit it");
+  assert.equal(backend.payload().issues.find((i) => i.id === issue.id).checklist_done, 1);
+  const activity = run(backend, "issue/get", { issue_id: issue.id }).activity;
+  assert.ok(activity.some((a) => a.kind === "updated" && a.field === "checklist" && a.from === "0/2" && a.to === "1/2"));
+
+  assert.deepEqual(run(backend, "checklist/reorder", { issue_id: issue.id, item_ids: [second.id, item.id] }), { ok: true });
+  assert.deepEqual(run(backend, "issue/get", { issue_id: issue.id }).checklist.map((i) => i.id), [second.id, item.id]);
+  assert.equal(codeOf(() => run(backend, "checklist/reorder", { issue_id: issue.id, item_ids: [item.id] })), "invalid_format");
+
+  assert.deepEqual(run(backend, "checklist/remove", { issue_id: issue.id, item_id: item.id }), { deleted: item.id });
+  assert.equal(codeOf(() => run(backend, "checklist/remove", { issue_id: issue.id, item_id: item.id })), "not_found");
+  assert.equal(codeOf(() => run(backend, "checklist/add", { issue_id: issue.id, text: "   " })), "invalid_format");
+  assert.equal(codeOf(() => run(backend, "checklist/add", { issue_id: issue.id, text: "two\nlines" })), "invalid_format");
+  assert.equal(codeOf(() => run(backend, "checklist/update", { issue_id: issue.id, item_id: "nope", done: true })), "not_found");
+});
+
+test("uploads: type, size and issue checks, then the file shows up on the issue", () => {
+  const backend = makeBackend();
+  const issue = issueOf(backend, "HOME-12");
+  const png = new Uint8Array([137, 80, 78, 71, 1, 2, 3]);
+  const upload = (extra = {}) => backend.upload({ issue_id: issue.id, name: "photo.png", mime: "image/png", bytes: png, ...extra });
+
+  const ok = upload();
+  assert.equal(ok.status, 200);
+  assert.equal(ok.body.name, "photo.png");
+  assert.equal(ok.body.size, 7);
+  assert.match(ok.body.url, /^blob:/);
+  assert.equal(backend.payload().issues.find((i) => i.id === issue.id).attachment_count, 1);
+
+  assert.equal(upload({ mime: "text/plain" }).status, 415);
+  assert.equal(upload({ issue_id: "nope" }).status, 404);
+  backend.setSettings({ attachments: { max_mb: 0.000005 } });
+  assert.equal(upload().status, 413, "7 bytes is above a 5 byte limit");
+  backend.setSettings({ attachments: { max_mb: 10, enabled: false } });
+  assert.equal(upload().status, 403);
+  assert.equal(codeOf(() => run(backend, "attachment/snapshot", { issue_id: issue.id, entity_id: "camera.garden" })), "invalid_format");
+});
+
+test("signed urls expire and the next detail fetch signs fresh ones", async () => {
+  const backend = makeBackend();
+  const id = issueOf(backend, "HOME-9").id;
+  const before = run(backend, "issue/get", { issue_id: id }).attachments[0];
+  assert.equal((await fetch(before.url)).ok, true);
+  backend.files.expire();
+  await assert.rejects(fetch(before.url));
+  const after = run(backend, "issue/get", { issue_id: id }).attachments[0];
+  assert.notEqual(after.url, before.url);
+  assert.equal((await fetch(after.url)).ok, true);
+});
+
+test("attachment/remove and attachment/snapshot", () => {
+  const backend = makeBackend();
+  const issue = issueOf(backend, "HOME-12");
+  const shot = run(backend, "attachment/snapshot", { issue_id: issue.id, entity_id: "camera.front_door" });
+  assert.equal(shot.source, "camera");
+  assert.match(shot.name, /^front_door-\d{8}-\d{4}\.png$/);
+  assert.equal(shot.mime, "image/png");
+  assert.equal(codeOf(() => run(backend, "attachment/snapshot", { issue_id: issue.id, entity_id: "camera.nope" })), "not_found");
+  assert.deepEqual(run(backend, "attachment/remove", { issue_id: issue.id, attachment_id: shot.id }), { deleted: shot.id });
+  assert.equal(codeOf(() => run(backend, "attachment/remove", { issue_id: issue.id, attachment_id: shot.id })), "not_found");
+  assert.equal(backend.files.url(shot.id), null, "the file is gone with the attachment");
+});
+
+test("suggest and quick_add: smart defaults from similar past issues", () => {
+  const backend = makeBackend();
+  const suggestion = run(backend, "suggest", { text: "Pay the internet bill" });
+  assert.equal(suggestion.assignee, "person.padmaja");
+  assert.deepEqual(suggestion.labels, ["bills"]);
+  assert.equal(suggestion.priority, "high");
+  assert.ok(suggestion.due_in_days >= 10);
+  assert.match(suggestion.evidence, /^based on \d similar issues?$/);
+  assert.ok(suggestion.similar.length >= 2 && suggestion.similar.every((s) => s.key && s.summary && s.status));
+  assert.ok(suggestion.confidence > 0 && suggestion.confidence <= 1);
+  assert.equal(run(backend, "suggest", { text: "Paint the dragon" }), null);
+  assert.equal(codeOf(() => run(backend, "suggest", { text: " " })), "invalid_format");
+
+  const preview = run(backend, "quick_add/preview", { text: "Pay the internet bill" });
+  assert.equal(preview.suggestion.assignee, "person.padmaja");
+  const decided = run(backend, "quick_add/preview", { text: "Pay the internet bill @joachim !low #net due tomorrow" }).suggestion;
+  assert.equal(decided, null, "everything the suggestion could fill was set by the text");
+  assert.equal(run(backend, "quick_add/preview", { text: "Paint the dragon" }).suggestion, null);
+
+  const plain = run(backend, "quick_add", { text: "Pay the internet bill" }).issue;
+  assert.equal(plain.assignee, null);
+  const smart = run(backend, "quick_add", { text: "Pay the phone bill", suggest: true }).issue;
+  assert.equal(smart.assignee, "person.padmaja");
+  assert.deepEqual(smart.labels, ["bills"]);
+  assert.equal(smart.priority, "high");
+  assert.ok(smart.due);
+
+  backend.setSettings({ learning: { defaults: false } });
+  assert.equal(run(backend, "suggest", { text: "Pay the gas bill" }), null);
+  assert.equal(run(backend, "quick_add/preview", { text: "Pay the gas bill" }).suggestion, null);
+});
+
+test("deleting an issue removes its files", () => {
+  const backend = makeBackend();
+  const issue = issueOf(backend, "HOME-9");
+  const attachment = issue.attachments[0];
+  assert.ok(backend.files.url(attachment.id));
+  run(backend, "issue/delete", { issue_id: issue.id });
+  assert.equal(backend.files.url(attachment.id), null);
+});
+
+test("hass.fetchWithAuth emulates POST /api/homeboard/upload with 413 / 415 / 404", async () => {
+  const { MockHass } = await import("../browser/mock-hass.js");
+  const backend = makeBackend();
+  const mock = new MockHass(backend, { latency: 0, uploadDelay: 0 });
+  const id = issueOf(backend, "HOME-12").id;
+  const post = (issue_id, file) => {
+    const body = new FormData();
+    body.append("issue_id", issue_id);
+    if (file) body.append("file", file, file.name);
+    return mock.hass.fetchWithAuth("/api/homeboard/upload", { method: "POST", body });
+  };
+  const good = await post(id, new File([new Uint8Array(10)], "a.png", { type: "image/png" }));
+  assert.equal(good.status, 200);
+  assert.equal((await good.json()).name, "a.png");
+  assert.equal((await post(id, new File(["x"], "a.txt", { type: "text/plain" }))).status, 415);
+  assert.equal((await post("nope", new File(["x"], "a.png", { type: "image/png" }))).status, 404);
+  backend.setSettings({ attachments: { max_mb: 0.000001 } });
+  assert.equal((await post(id, new File([new Uint8Array(10)], "big.png", { type: "image/png" }))).status, 413);
+  assert.equal((await post(id)).status, 400);
+  assert.equal((await mock.hass.fetchWithAuth("/api/homeboard/other", { method: "POST", body: new FormData() })).status, 404);
+  assert.deepEqual(Object.keys(mock.hass.states).filter((k) => k.startsWith("camera.")), ["camera.front_door", "camera.garden"]);
+});

@@ -50,6 +50,27 @@
     },
     "scan_health": {
       "service": "mdi:stethoscope"
+    },
+    "add_checklist_item": {
+      "service": "mdi:checkbox-marked-outline"
+    },
+    "check_item": {
+      "service": "mdi:check-circle-outline"
+    },
+    "remove_checklist_item": {
+      "service": "mdi:checkbox-blank-off-outline"
+    },
+    "attach_camera_snapshot": {
+      "service": "mdi:camera-plus"
+    },
+    "suggest": {
+      "service": "mdi:lightbulb-on-outline"
+    },
+    "send_digest": {
+      "service": "mdi:email-fast-outline"
+    },
+    "forget_learning": {
+      "service": "mdi:brain"
     }
   },
   "entity": {
@@ -68,6 +89,9 @@
       },
       "auto_issues": {
         "default": "mdi:robot-outline"
+      },
+      "suggestions": {
+        "default": "mdi:lightbulb-on-outline"
       },
       "total_overdue": {
         "default": "mdi:alert-circle-outline"

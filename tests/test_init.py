@@ -143,21 +143,51 @@ async def test_config_flow_creates_single_entry(hass):
     assert again["reason"] == "single_instance_allowed"
 
 
-async def test_options_flow_walks_three_pages_and_reloads(hass, entry):
-    await setup(hass, entry)
+async def open_section(hass, entry, section):
     flow = await hass.config_entries.options.async_init(entry.entry_id)
-    assert flow["step_id"] == "init"
+    assert flow["type"] is FlowResultType.MENU and flow["step_id"] == "init"
+    assert set(flow["menu_options"]) == {
+        "general",
+        "alerts",
+        "people",
+        "files",
+        "health",
+        "learning",
+    }
+    flow = await hass.config_entries.options.async_configure(
+        flow["flow_id"], {"next_step_id": section}
+    )
+    assert flow["type"] is FlowResultType.FORM and flow["step_id"] == section
+    return flow
+
+
+async def test_options_general_section_saves_and_reloads(hass, entry):
+    await setup(hass, entry)
+    flow = await open_section(hass, entry, "general")
     flow = await hass.config_entries.options.async_configure(
         flow["flow_id"],
         {
             "due_soon_hours": 24.0,
             "auto_archive_done_days": 0.0,
+            "checklist_autodone": True,
             "panel_title": "Tavle",
             "panel_icon": "mdi:home",
             "panel_admin_only": False,
+            "tracked_people": ["person.padmaja"],
         },
     )
-    assert flow["step_id"] == "notifications"
+    assert flow["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    options = dict(entry.options)
+    assert options["due_soon_hours"] == 24 and isinstance(options["due_soon_hours"], int)
+    assert options["checklist_autodone"] is True and options["tracked_people"] == ["person.padmaja"]
+    assert entry.state is ConfigEntryState.LOADED  # reloaded with the new options
+    assert (
+        entry.runtime_data.due_soon_hours == 24
+        and entry.runtime_data.settings()["panel_title"] == "Tavle"
+    )
+    # another section keeps what the first one saved and drops blanks
+    flow = await open_section(hass, entry, "alerts")
     flow = await hass.config_entries.options.async_configure(
         flow["flow_id"],
         {
@@ -168,8 +198,86 @@ async def test_options_flow_walks_three_pages_and_reloads(hass, entry):
             "notify_health": False,
         },
     )
-    assert flow["step_id"] == "health"
+    assert flow["type"] is FlowResultType.CREATE_ENTRY
+    assert (
+        entry.options["notify_services"] == ["mobile_app_phone"]
+        and entry.options["due_soon_hours"] == 24
+    )
+
+
+async def test_options_people_section_walks_through_each_person(hass, entry):
+    await setup(hass, entry)
+    hass.services.async_register("notify", "mobile_app_joachim_phone", lambda call: None)
+    flow = await open_section(hass, entry, "people")
     flow = await hass.config_entries.options.async_configure(
+        flow["flow_id"],
+        {
+            "push_assigned": True,
+            "push_comment": False,
+            "push_overdue": True,
+            "push_reported_done": True,
+            "digest_enabled": True,
+            "digest_time": "07:45",
+            "quiet_start": "22:30",
+            "quiet_end": "06:30",
+        },
+    )
+    assert flow["step_id"] == "person" and flow["description_placeholders"] == {"person": "Joachim"}
+    flow = await hass.config_entries.options.async_configure(
+        flow["flow_id"], {"notify_service": "notify.mobile_app_joachim_phone"}
+    )
+    assert flow["step_id"] == "person" and flow["description_placeholders"] == {"person": "Padmaja"}
+    flow = await hass.config_entries.options.async_configure(
+        flow["flow_id"], {}
+    )  # auto-detect for her
+    assert flow["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    assert entry.options["person_notify"] == {"person.joachim": ["mobile_app_joachim_phone"]}
+    assert entry.options["push_comment"] is False and entry.options["digest_time"] == "07:45"
+    assert entry.runtime_data.push.services_for("person.joachim") == ["mobile_app_joachim_phone"]
+    # clearing the last mapping removes the key again
+    flow = await open_section(hass, entry, "people")
+    flow = await hass.config_entries.options.async_configure(
+        flow["flow_id"], {"push_assigned": True}
+    )
+    flow = await hass.config_entries.options.async_configure(flow["flow_id"], {})
+    flow = await hass.config_entries.options.async_configure(flow["flow_id"], {})
+    assert flow["type"] is FlowResultType.CREATE_ENTRY and "person_notify" not in entry.options
+
+
+async def test_options_files_learning_and_health_sections(hass, entry):
+    await setup(hass, entry)
+    flow = await open_section(hass, entry, "files")
+    await hass.config_entries.options.async_configure(
+        flow["flow_id"],
+        {"attachments_enabled": False, "max_upload_mb": 5.0, "assist_sentences": True},
+    )
+    await hass.async_block_till_done()
+    assert entry.options["max_upload_mb"] == 5 and entry.options["assist_sentences"] is True
+    assert entry.runtime_data.settings()["attachments"] == {"enabled": False, "max_mb": 5}
+
+    flow = await open_section(hass, entry, "learning")
+    await hass.config_entries.options.async_configure(
+        flow["flow_id"],
+        {
+            "learn_defaults": True,
+            "learn_patterns": False,
+            "learn_workload": True,
+            "learn_health": True,
+            "learn_rhythm": True,
+        },
+    )
+    await hass.async_block_till_done()
+    assert entry.runtime_data.settings()["learning"] == {
+        "defaults": True,
+        "patterns": False,
+        "workload": True,
+        "health": True,
+        "rhythm": True,
+    }
+
+    flow = await open_section(hass, entry, "health")
+    await hass.config_entries.options.async_configure(
         flow["flow_id"],
         {
             "health_enabled": False,
@@ -184,16 +292,7 @@ async def test_options_flow_walks_three_pages_and_reloads(hass, entry):
             "health_max_open": 10.0,
         },
     )
-    assert flow["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
-    options = dict(entry.options)
-    assert options["due_soon_hours"] == 24 and isinstance(options["due_soon_hours"], int)
-    assert options["auto_archive_done_days"] == 0
-    assert options["notify_services"] == ["mobile_app_phone"]
-    assert options["health_enabled"] is False
-    assert "health_project" not in options  # blank optional fields are dropped
-    # the entry was reloaded and picked the new options up
-    assert entry.state is ConfigEntryState.LOADED
-    assert entry.runtime_data.due_soon_hours == 24
-    assert entry.runtime_data.settings()["panel_title"] == "Tavle"
+    assert entry.options["health_enabled"] is False and "health_project" not in entry.options
     assert entry.runtime_data.health.enabled is False
+    assert entry.options["max_upload_mb"] == 5  # earlier sections survive

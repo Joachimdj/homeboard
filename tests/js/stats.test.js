@@ -8,7 +8,7 @@ const home = index.projects.find((p) => p.key === "HOME");
 
 test("projectStats counts per status and open / overdue / due soon / unassigned", () => {
   const stats = projectStats(payload, index, home, NOW.getTime());
-  assert.deepEqual(stats.byStatus.map((s) => [s.status.name, s.count]), [["Backlog", 5], ["To do", 7], ["In progress", 5], ["Done", 5]]);
+  assert.deepEqual(stats.byStatus.map((s) => [s.status.name, s.count]), [["Backlog", 5], ["To do", 7], ["In progress", 5], ["Done", 9]]);
   assert.equal(stats.open, 17);
   assert.equal(stats.overdue, 2);
   assert.ok(stats.dueSoon >= 2);

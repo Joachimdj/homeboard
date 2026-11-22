@@ -1,12 +1,18 @@
 // In-memory implementation of every websocket command in docs/PROTOCOL.md
-// section 5 (plus home health scan), with demo data. DOM free: the browser
-// harness and the node tests both use it.
+// sections 5 and 10 (plus home health scan), with demo data. DOM free: the
+// browser harness and the node tests both use it.
+
+import { FileStore, MINIMAL_PDF, demoPicture } from "./mock-files.js";
+import { HEALTH_LEARNED, defaultsFrom, onlyMissing, rhythmGrid, suggestFor, workloadFrom } from "./mock-insights.js";
 
 const PRIORITIES = ["highest", "high", "medium", "low", "lowest"];
 const TYPES = ["task", "bug", "story", "epic"];
 const CATEGORIES = ["todo", "in_progress", "done"];
 const GAP = 1000;
-const ADMIN_ONLY = /^(project\/(create|update|delete)|status\/|health\/scan)/;
+const ADMIN_ONLY = /^(project\/(create|update|delete)|status\/|health\/scan|insights\/forget)/;
+const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"];
+const FEATURES = ["defaults", "patterns", "workload", "health", "rhythm"];
+const SUGGESTION_FEATURE = { recurring: "patterns", health_ignore: "health", digest_time: "rhythm" };
 
 const TEMPLATES = {
   household: [["Backlog", "todo", true, null], ["To do", "todo", false, null], ["In progress", "in_progress", false, 3], ["Done", "done", false, null]],
@@ -149,7 +155,22 @@ export class MockBackend {
     this.now = now;
     this.counter = 0;
     this.listeners = new Set();
-    this.settings = { due_soon_hours: 72, panel_title: "Board", auto_archive_done_days: 30, health_enabled: true };
+    this.settings = {
+      due_soon_hours: 72,
+      panel_title: "Board",
+      auto_archive_done_days: 30,
+      health_enabled: true,
+      learning: { defaults: true, patterns: true, workload: true, health: true, rhythm: false },
+      attachments: { enabled: true, max_mb: 10 },
+    };
+    this.cameras = [
+      { entity_id: "camera.front_door", name: "Front door" },
+      { entity_id: "camera.garden", name: "Garden" },
+    ];
+    this.files = new FileStore();
+    this.suggestions = [];
+    this.handled = new Set(); // accepted or dismissed suggestion ids
+    this.forgotten = new Set();
     this.people = [
       { entity_id: "person.joachim", name: "Joachim", picture: null, user_id: "u-joachim" },
       {
@@ -164,6 +185,14 @@ export class MockBackend {
     this.issues = new Map();
     this.recurring = new Map();
     if (seed) seedDemo(this);
+  }
+
+  /** Harness switches: merges into settings (learning / attachments one level deep) and pushes. */
+  setSettings(patch) {
+    for (const [key, value] of Object.entries(patch)) {
+      this.settings[key] = value && typeof value === "object" ? { ...this.settings[key], ...value } : value;
+    }
+    this.changed();
   }
 
   setUser(patch) {
@@ -256,9 +285,26 @@ export class MockBackend {
     return { overdue, due_soon: !overdue && end - now <= this.settings.due_soon_hours * 3600000 };
   }
 
+  progress(issue) {
+    return `${issue.checklist.filter((i) => i.done).length}/${issue.checklist.length}`;
+  }
+
   publicIssue(issue) {
-    const { comments, activity, archived, overdue_notified, due_soon_notified, ...rest } = issue;
-    return { ...rest, ...this.flags(issue), comment_count: comments.length };
+    const { comments, activity, archived, overdue_notified, due_soon_notified, checklist, attachments, ...rest } = issue;
+    const result = {
+      ...rest,
+      ...this.flags(issue),
+      comment_count: comments.length,
+      checklist_total: checklist.length,
+      checklist_done: checklist.filter((i) => i.done).length,
+      attachment_count: attachments.length,
+    };
+    if (issue.type === "epic") {
+      const children = [...this.issues.values()].filter((i) => i.parent === issue.id && !i.archived);
+      result.epic_total = children.length;
+      result.epic_done = children.filter((i) => !this.isOpen(i)).length;
+    }
+    return result;
   }
 
   stats(visible) {
@@ -304,7 +350,7 @@ export class MockBackend {
     const visible = [...this.issues.values()].filter((i) => !i.archived);
     return {
       version: "0.1.0",
-      settings: { ...this.settings },
+      settings: { ...structuredClone(this.settings), insights_open: this.openSuggestions().length },
       me: this.user.person,
       is_admin: this.user.is_admin,
       people: this.people.map((p) => ({ ...p })),
@@ -370,7 +416,7 @@ export class MockBackend {
       assignee: this.person(fields.assignee ?? null), reporter: this.user.person, labels, parent: fields.parent || null,
       due: fields.due || null, rank: this.rankFor(project.id, status, null, null), dedupe_key: fields.dedupe_key || null,
       recurring_id: fields.recurring_id || null, source, created: now, updated: now, resolved: null, archived: false,
-      overdue_notified: false, due_soon_notified: false, comments: [], activity: [],
+      overdue_notified: false, due_soon_notified: false, comments: [], activity: [], checklist: [], attachments: [],
     };
     if (this.projectStatus(project, status).category === "done") issue.resolved = now;
     this.issues.set(id, issue);
@@ -383,7 +429,73 @@ export class MockBackend {
   }
 
   fullIssue(issue) {
-    return { ...this.publicIssue(issue), comments: structuredClone(issue.comments), activity: structuredClone(issue.activity) };
+    return {
+      ...this.publicIssue(issue),
+      comments: structuredClone(issue.comments),
+      activity: structuredClone(issue.activity),
+      checklist: structuredClone(issue.checklist),
+      attachments: issue.attachments.map((a) => this.publicAttachment(a)),
+    };
+  }
+
+  // ---- files ---------------------------------------------------------------------------
+
+  publicAttachment(attachment) {
+    return { ...attachment, url: this.files.url(attachment.id), thumb_url: this.files.url(attachment.id, true) };
+  }
+
+  addAttachment(issue, { name, mime, bytes, thumb = null, source = "upload" }) {
+    const attachment = { id: this.id("att"), name, mime, size: bytes.length, ts: isoNow(this.now()), author: this.user.person, source };
+    this.files.add(attachment.id, { mime, bytes, thumb });
+    issue.attachments.push(attachment);
+    this.log(issue, "updated", "attachments", String(issue.attachments.length - 1), String(issue.attachments.length));
+    return attachment;
+  }
+
+  /** What POST /api/homeboard/upload answers: { status, body }. */
+  upload({ issue_id, name, mime, bytes }) {
+    if (!this.settings.attachments.enabled) return { status: 403, body: { message: "Attachments are switched off" } };
+    const issue = this.issues.get(issue_id);
+    if (!issue) return { status: 404, body: { message: "Issue not found" } };
+    if (!ALLOWED_MIME.includes(mime)) return { status: 415, body: { message: "Unsupported file type" } };
+    if (bytes.length > this.settings.attachments.max_mb * 1024 * 1024) return { status: 413, body: { message: "File too large" } };
+    const attachment = this.addAttachment(issue, { name, mime, bytes });
+    this.changed();
+    return { status: 200, body: this.publicAttachment(attachment) };
+  }
+
+  // ---- learning -------------------------------------------------------------------------
+
+  openSuggestions() {
+    return this.suggestions.filter((s) => !this.handled.has(s.id) && this.settings.learning[SUGGESTION_FEATURE[s.kind]] && !this.forgotten.has(SUGGESTION_FEATURE[s.kind]));
+  }
+
+  suggestionCandidates() {
+    return [...this.issues.values()]
+      .filter((i) => !i.archived)
+      .map((i) => ({ key: i.key, summary: i.summary, status: this.statusById(i)?.name, assignee: i.assignee, labels: i.labels, priority: i.priority, due: i.due, created: i.created }));
+  }
+
+  suggest(text) {
+    return this.settings.learning.defaults && !this.forgotten.has("defaults") ? suggestFor(text, this.suggestionCandidates()) : null;
+  }
+
+  learnedData() {
+    const learning = this.settings.learning;
+    const live = [...this.issues.values()].filter((i) => !i.archived);
+    const learned = {};
+    const gone = (feature) => this.forgotten.has(feature);
+    if (learning.defaults) learned.defaults = gone("defaults") ? { issues_analysed: 0, top_labels: [], people: [] } : defaultsFrom(live);
+    if (learning.workload) {
+      learned.workload = gone("workload") ? { people: {}, types: {}, labels: {} } : workloadFrom(live, (i) => !this.isOpen(i), this.people, this.now().getTime());
+    }
+    if (learning.rhythm) {
+      learned.rhythm = {
+        people: Object.fromEntries(this.people.map((p, n) => [p.entity_id, gone("rhythm") ? { samples: 0, grid: Array.from({ length: 7 }, () => Array(24).fill(0)) } : { samples: 2016, grid: rhythmGrid(n) }])),
+      };
+    }
+    if (learning.health) learned.health = gone("health") ? { tracked_sensors: 0, silent: [], flapping: [] } : structuredClone(HEALTH_LEARNED);
+    return learned;
   }
 }
 
@@ -556,6 +668,7 @@ const COMMANDS = {
 
   "issue/delete"({ issue_id }) {
     const issue = this.issue(issue_id);
+    for (const attachment of issue.attachments) this.files.remove(attachment.id);
     this.issues.delete(issue.id);
     for (const other of this.issues.values()) if (other.parent === issue.id) other.parent = null;
     this.changed();
@@ -588,15 +701,136 @@ const COMMANDS = {
       me: this.user.person,
     });
     const target = this.findProject(project, parsed.project);
-    return { ...parsed, project: target.key };
+    return { ...parsed, project: target.key, suggestion: onlyMissing(this.suggest(parsed.summary), parsed) };
   },
 
-  "quick_add"({ text, project = null }) {
-    const parsed = COMMANDS["quick_add/preview"].call(this, { text, project });
+  "quick_add"({ text, project = null, suggest = false }) {
+    const { suggestion, ...parsed } = COMMANDS["quick_add/preview"].call(this, { text, project });
     const target = [...this.projects.values()].find((p) => p.key === parsed.project);
-    const issue = this.newIssue(target, { ...parsed, issue_type: parsed.type || "task", assignee: parsed.assignee, priority: parsed.priority || "medium" }, "ui");
+    const fields = { ...parsed, issue_type: parsed.type || "task", assignee: parsed.assignee, priority: parsed.priority || "medium" };
+    if (suggest && suggestion) {
+      if (suggestion.assignee) fields.assignee = suggestion.assignee;
+      if (suggestion.labels.length) fields.labels = suggestion.labels;
+      if (suggestion.priority) fields.priority = suggestion.priority;
+      if (suggestion.due_in_days != null) fields.due = dateString(addDays(parseDate(dateString(this.now())), suggestion.due_in_days));
+    }
+    const issue = this.newIssue(target, fields, "ui");
     this.changed();
     return { issue: this.publicIssue(issue), parsed };
+  },
+
+  suggest({ text }) {
+    if (!String(text || "").trim()) fail("invalid_format", "text is required");
+    return this.suggest(text);
+  },
+
+  "checklist/add"({ issue_id, text }) {
+    const issue = this.issue(issue_id);
+    const clean = String(text || "").trim();
+    if (!clean || clean.includes("\n")) fail("invalid_format", "text must be one non-empty line");
+    if (clean.length > 200) fail("invalid_format", "text is too long");
+    if (issue.checklist.length >= 100) fail("invalid_format", "A checklist holds at most 100 items");
+    const before = this.progress(issue);
+    const item = { id: this.id("chk"), text: clean, done: false };
+    issue.checklist.push(item);
+    this.log(issue, "updated", "checklist", before, this.progress(issue));
+    this.changed();
+    return { ...item };
+  },
+
+  "checklist/update"({ issue_id, item_id, ...fields }) {
+    const issue = this.issue(issue_id);
+    const item = issue.checklist.find((i) => i.id === item_id) || fail("not_found", `Checklist item ${item_id} not found`);
+    const before = this.progress(issue);
+    if ("text" in fields) {
+      if (!String(fields.text).trim()) fail("invalid_format", "text is required");
+      item.text = String(fields.text).trim().slice(0, 200);
+    }
+    if ("done" in fields) item.done = Boolean(fields.done);
+    this.log(issue, "updated", "checklist", before, this.progress(issue));
+    this.changed();
+    return { ...item };
+  },
+
+  "checklist/remove"({ issue_id, item_id }) {
+    const issue = this.issue(issue_id);
+    if (!issue.checklist.some((i) => i.id === item_id)) fail("not_found", `Checklist item ${item_id} not found`);
+    const before = this.progress(issue);
+    issue.checklist = issue.checklist.filter((i) => i.id !== item_id);
+    this.log(issue, "updated", "checklist", before, this.progress(issue));
+    this.changed();
+    return { deleted: item_id };
+  },
+
+  "checklist/reorder"({ issue_id, item_ids }) {
+    const issue = this.issue(issue_id);
+    const current = issue.checklist.map((i) => i.id).sort().join(",");
+    if (!Array.isArray(item_ids) || [...item_ids].sort().join(",") !== current) fail("invalid_format", "item_ids must list every item exactly once");
+    issue.checklist = item_ids.map((id) => issue.checklist.find((i) => i.id === id));
+    issue.updated = isoNow(this.now());
+    this.changed();
+    return { ok: true };
+  },
+
+  "attachment/remove"({ issue_id, attachment_id }) {
+    const issue = this.issue(issue_id);
+    if (!issue.attachments.some((a) => a.id === attachment_id)) fail("not_found", `Attachment ${attachment_id} not found`);
+    issue.attachments = issue.attachments.filter((a) => a.id !== attachment_id);
+    this.files.remove(attachment_id);
+    this.log(issue, "updated", "attachments", String(issue.attachments.length + 1), String(issue.attachments.length));
+    this.changed();
+    return { deleted: attachment_id };
+  },
+
+  "attachment/snapshot"({ issue_id, entity_id }) {
+    if (!this.settings.attachments.enabled) fail("invalid_format", "Attachments are switched off");
+    const issue = this.issue(issue_id);
+    const camera = this.cameras.find((c) => c.entity_id === entity_id) || fail("not_found", `Camera ${entity_id} not found`);
+    const stamp = isoNow(this.now()).slice(0, 16).replace(/[-:]/g, "").replace("T", "-");
+    const bytes = demoPicture(camera.entity_id.length * 7 + issue.number);
+    const attachment = this.addAttachment(issue, { name: `${entity_id.slice(7)}-${stamp}.png`, mime: "image/png", bytes, source: "camera" });
+    this.changed();
+    return this.publicAttachment(attachment);
+  },
+
+  "insights/get"() {
+    return { features: { ...this.settings.learning }, suggestions: structuredClone(this.openSuggestions()), learned: this.learnedData() };
+  },
+
+  "insights/accept"({ suggestion_id }) {
+    const suggestion = this.openSuggestions().find((s) => s.id === suggestion_id) || fail("not_found", `Suggestion ${suggestion_id} not found`);
+    const result = { applied: true };
+    if (suggestion.kind === "recurring") {
+      const { project_id, ...fields } = suggestion.proposal;
+      const record = this.recurringRecord(this.project(project_id), { ...fields, summary: fields.summary });
+      record.id = this.id("rec");
+      this.recurring.set(record.id, record);
+      result.recurring_id = record.id;
+    } else if (suggestion.kind === "health_ignore") {
+      const issue = [...this.issues.values()].find((i) => i.dedupe_key === suggestion.proposal.key);
+      if (issue && !issue.labels.includes("ignore")) {
+        issue.labels.push("ignore");
+        this.log(issue, "updated", "labels", null, issue.labels.join(", "));
+      }
+    }
+    this.handled.add(suggestion.id);
+    this.changed();
+    return result;
+  },
+
+  "insights/dismiss"({ suggestion_id }) {
+    const suggestion = this.openSuggestions().find((s) => s.id === suggestion_id) || fail("not_found", `Suggestion ${suggestion_id} not found`);
+    this.handled.add(suggestion.id);
+    this.changed();
+    return { dismissed: suggestion.id };
+  },
+
+  "insights/forget"({ feature = null }) {
+    if (feature !== null && !FEATURES.includes(feature)) fail("invalid_format", `Unknown feature ${feature}`);
+    const forgotten = feature ? [feature] : [...FEATURES];
+    for (const name of forgotten) this.forgotten.add(name);
+    this.changed();
+    return { forgotten };
   },
 
   "recurring/create"({ project_id, ...fields }) {
@@ -715,9 +949,14 @@ function seedDemo(backend) {
   add(home, "In progress", { summary: "Declutter the kitchen drawers", priority: "low", assignee: pad2, labels: ["kitchen"], age: 3 });
   add(home, "Done", { summary: "Service the boiler", priority: "high", assignee: me, age: 20, resolvedAgo: 2, touched: 2 });
   add(home, "Done", { summary: "Wash the windows", priority: "low", assignee: pad2, age: 15, resolvedAgo: 5, touched: 5 });
-  add(home, "Done", { summary: "Buy compost", priority: "lowest", assignee: me, labels: ["garden"], age: 6, resolvedAgo: 1, touched: 1 });
+  add(home, "Done", { summary: "Buy compost", priority: "lowest", assignee: me, labels: ["garden"], parent: epic.id, age: 6, resolvedAgo: 1, touched: 1 });
   add(home, "Done", { summary: "Cancel the old gym membership", priority: "medium", assignee: pad2, age: 30, resolvedAgo: 12, touched: 12 });
   add(home, "Done", { summary: "Sharpen the lawnmower blades", priority: "low", assignee: me, labels: ["garden"], age: 11, resolvedAgo: 3, touched: 3 });
+  // History the learning features can draw on (all resolved within the last 30 days).
+  add(home, "Done", { summary: "Pay the water bill", priority: "high", assignee: pad2, labels: ["bills"], due: due(-14), age: 28, resolvedAgo: 15, touched: 15 });
+  add(home, "Done", { summary: "Pay the gas bill", priority: "high", assignee: pad2, labels: ["bills"], due: due(-10), age: 24, resolvedAgo: 11, touched: 11 });
+  add(home, "Done", { summary: "Order new bin bags", priority: "lowest", labels: ["chores"], age: 29, resolvedAgo: 26, touched: 26 });
+  add(home, "Done", { summary: "Order bin bags", priority: "lowest", labels: ["chores"], age: 14, resolvedAgo: 12, touched: 12 });
 
   latch.comments.push(
     { id: backend.id("com"), author: pad2, ts: ago(3), text: "It was fine last summer, so I think it is the cold." },
@@ -729,6 +968,20 @@ function seedDemo(backend) {
     { ts: ago(0, 6), actor: me, kind: "commented", field: null, from: null, to: null },
   );
 
+  // Checklists and files.
+  const checklist = (issue, items) => {
+    issue.checklist = items.map(([text, done]) => ({ id: backend.id("chk"), text, done }));
+  };
+  const issueByKey = (key) => [...backend.issues.values()].find((i) => i.key === key);
+  checklist(issueByKey("HOME-14"), [["Buy timber", true], ["Cut the boards", true], ["Assemble the frames", true], ["Fill with soil", false], ["Plant the seeds", false]]);
+  checklist(latch, [["Buy new screws", false], ["Oil the hinge", false]]);
+  checklist(issueByKey("HOME-11"), [["Write the guest list", true], ["Choose the menu", false], ["Order the wine", false], ["Set the table", false]]);
+  const picture = (issue, name, seed, source = "upload") => backend.addAttachment(issue, { name, mime: "image/png", bytes: demoPicture(seed), thumb: demoPicture(seed, 120, 75), source });
+  picture(latch, "latch-closeup.png", 3);
+  picture(latch, "gate-from-the-street.png", 8);
+  backend.addAttachment(latch, { name: "latch-manual.pdf", mime: "application/pdf", bytes: MINIMAL_PDF });
+  backend.addAttachment(issueByKey("HOME-7"), { name: "invoice-november.pdf", mime: "application/pdf", bytes: MINIMAL_PDF });
+
   const health = (summary, priority, type, labels, id, extra = {}) =>
     add(fix, "To do", { summary, priority, type, labels: ["auto", ...labels], source: "health", assignee: me, reporter: null, age: 1, touched: 0, hours: 1, ...extra, dedupe_key: id });
   health("Battery low: Front door lock (12%)", "high", "task", ["battery", "security"], "health:battery:dev-lock");
@@ -738,6 +991,7 @@ function seedDemo(backend) {
   health("Repair needed: Zigbee coordinator firmware", "medium", "bug", [], "health:repair:zha:fw");
   health("Integration problem: Philips Hue (retrying setup)", "medium", "bug", ["offline"], "health:entry:hue", { assignee: null });
   add(fix, "Backlog", { summary: "Document the Zigbee network layout", priority: "low", type: "task", age: 20 });
+  picture(issueByKey("FIX-2"), "front_door-20261122-2015.png", 21, "camera");
 
   const recurring = (project, fields) => {
     const params = { ...fields, summary: fields.summary };
@@ -750,4 +1004,23 @@ function seedDemo(backend) {
   recurring(home, { summary: "Clean the extractor filters", labels: ["kitchen"], repeat: { every: 1, unit: "month", day_of_month: 1 }, next_due: dateString(new Date(today.getFullYear(), today.getMonth() + 1, 1)), create_days_before: 3 });
   recurring(home, { summary: "Annual boiler service", priority: "high", assignee: me, labels: ["bills"], repeat: { every: 1, unit: "year" }, next_due: dateString(new Date(today.getFullYear() + 1, 8, 15)) });
   recurring(home, { summary: "Water the indoor plants", labels: ["chores"], enabled: false, repeat: { every: 3, unit: "day" }, next_due: due(1) });
+
+  backend.suggestions = [
+    {
+      id: backend.id("sug"),
+      kind: "recurring",
+      title: "Make 'Order new bin bags' a recurring chore?",
+      detail: "Created 4 times, about every 6 weeks",
+      evidence: { count: 4, interval_days: 42 },
+      proposal: { project_id: home.id, summary: "Order new bin bags", repeat: { every: 6, unit: "week" }, next_due: due(14), assignee: null, labels: ["chores"], priority: "lowest" },
+    },
+    {
+      id: backend.id("sug"),
+      kind: "health_ignore",
+      title: "Stop reporting 'Offline: Garden irrigation controller'?",
+      detail: "You closed this fault 3 times in the last 30 days and it came back each time",
+      evidence: { reopened: 3 },
+      proposal: { key: "health:offline:dev-irrigation", summary: "Offline: Garden irrigation controller" },
+    },
+  ];
 }

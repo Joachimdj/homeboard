@@ -230,7 +230,7 @@ class ProjectDialog {
             }
           },
         },
-        h("input.input", { type: "text", value: this.status.name, placeholder: t("statuses.new_name"), "aria-label": t("statuses.new_name"), oninput: (e) => { this.status.name = e.target.value; } }),
+        h("input.input", { type: "text", value: this.status.name, placeholder: t("statuses.new_name"), "aria-label": t("statuses.new_name"), oninput: (e) => { this.status.name = e.target.value; this.update(); } }),
         h(
           "select.input",
           { value: this.status.category, "aria-label": t("statuses.category"), onchange: (e) => { this.status.category = e.target.value; } },
@@ -274,7 +274,7 @@ class ProjectDialog {
       h(
         "form.add-status",
         { key: "add", onsubmit: (event) => { event.preventDefault(); add(); } },
-        h("input.input", { type: "text", value: this.labelText, placeholder: t("labels.new"), "aria-label": t("labels.new"), oninput: (e) => { this.labelText = e.target.value; } }),
+        h("input.input", { type: "text", value: this.labelText, placeholder: t("labels.new"), "aria-label": t("labels.new"), oninput: (e) => { this.labelText = e.target.value; this.update(); } }),
         h("button.btn.primary", { type: "submit" }, icon("mdi:plus"), t("statuses.add")),
       ),
     ];

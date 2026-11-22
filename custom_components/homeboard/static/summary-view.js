@@ -5,6 +5,7 @@
 import { avatar, dueChip, emptyState, icon, typeIcon } from "./components.js";
 import { h } from "./dom.js";
 import { t, tn } from "./i18n.js";
+import { learningEnabled } from "./insights.js";
 import { attentionIssues, barSegments, healthStats, peopleStats, projectStats } from "./stats.js";
 import { relativeTime } from "./util.js";
 
@@ -81,6 +82,20 @@ function healthTile(health, ctx) {
   );
 }
 
+function insightsTile(open, ctx) {
+  return h(
+    "section.tile.insights",
+    { key: "insights" },
+    h("header.tile-head", icon("mdi:lightbulb-on-outline"), h("strong", t("insights.tile_title")), h("span.spacer"), h("span.muted.small", t("insights.tile_subtitle"))),
+    h(
+      "button.big-number.wide",
+      { type: "button", onclick: () => ctx.onOpenInsights(), "aria-label": t("insights.tile_open") },
+      h("strong", open),
+      h("span", open ? tn("insights.tile", open) : t("insights.tile_none")),
+    ),
+  );
+}
+
 function peopleSection(rows, ctx) {
   return h(
     "section.panel-section",
@@ -133,16 +148,22 @@ function issueList(title, iconName, issues, ctx, tone) {
 }
 
 /**
- * ctx: { payload, index, now, projectIds?, showPeople, showHealth, showAttention, onOpenBoard(projectId|null, filter), onOpenIssue(issue) }
+ * ctx: { payload, index, now, projectIds?, showPeople, showHealth, showInsights, showAttention,
+ *        onOpenBoard(projectId|null, filter), onOpenInsights(), onOpenIssue(issue) }
  */
 export function renderSummary(ctx) {
   const { payload, index } = ctx;
   const projects = index.projects.filter((p) => !p.archived && (!ctx.projectIds || ctx.projectIds.includes(p.id) || ctx.projectIds.includes(p.key)));
   const health = healthStats(payload, index);
   const showHealth = ctx.showHealth && (payload.settings?.health_enabled || health.open > 0);
-  const tiles = [showHealth ? healthTile(health, ctx) : null, ...projects.map((p) => projectTile(projectStats(payload, index, p), ctx))];
+  const showInsights = ctx.showInsights && learningEnabled(payload.settings);
+  const tiles = [
+    showHealth ? healthTile(health, ctx) : null,
+    showInsights ? insightsTile(payload.settings.insights_open || 0, ctx) : null,
+    ...projects.map((p) => projectTile(projectStats(payload, index, p), ctx)),
+  ];
 
-  if (!projects.length && !showHealth) return h("div.summary", emptyState("mdi:view-dashboard-outline", t("summary.no_projects"), t("summary.no_projects_hint")));
+  if (!projects.length && !showHealth && !showInsights) return h("div.summary", emptyState("mdi:view-dashboard-outline", t("summary.no_projects"), t("summary.no_projects_hint")));
 
   const attention = ctx.showAttention ? attentionIssues(index, projects.map((p) => p.id)) : null;
   return h(

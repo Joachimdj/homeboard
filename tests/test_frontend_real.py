@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from homeassistant.components.frontend import DATA_EXTRA_MODULE_URL, DATA_PANELS
 from homeassistant.setup import async_setup_component
 
+from custom_components.homeboard import frontend
 from custom_components.homeboard.const import DOMAIN
 
 from .conftest import setup
@@ -17,7 +20,9 @@ async def test_panel_cards_and_static_files_are_registered_for_real(hass, entry,
     assert await async_setup_component(hass, "frontend", {})
     await setup(hass, entry)
     version = entry.runtime_data.version
-    assert version == "0.1.0"
+    assert (
+        version == json.loads((frontend.STATIC_DIR.parent / "manifest.json").read_text())["version"]
+    )
 
     panel = hass.data[DATA_PANELS]["homeboard"]
     assert panel.component_name == "custom"

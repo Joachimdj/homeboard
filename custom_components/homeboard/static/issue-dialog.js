@@ -3,15 +3,21 @@
 
 import { actions } from "./actions.js";
 import { describeActivity } from "./activity.js";
+import { AttachmentsSection } from "./attachments.js";
+import { ChecklistEditor } from "./checklist-editor.js";
 import { autoChip, avatar, icon, labelChip, personOptions, priorityOptions, selectField, typeIcon, typeOptions } from "./components.js";
 import { deepActiveElement, h } from "./dom.js";
 import { t } from "./i18n.js";
 import { defaultStatus, personName } from "./indexes.js";
 import { dialogShell, overlay } from "./overlay.js";
 import { store } from "./store.js";
+import { hasSuggestion, suggestionFill } from "./suggestions.js";
 import { formatDateTime, joinDue, relativeTime, splitDue, uniqueSorted } from "./util.js";
 
 const TEXT_FIELDS = new Set(["summary", "description"]);
+
+/** What makes the fetched detail stale. Checklist counters are left out on purpose: they change optimistically. */
+const detailKeyOf = (issue) => `${issue.updated}|${issue.comment_count}|${issue.attachment_count}`;
 
 function normaliseLabel(text) {
   return text.trim().replace(/^#/, "").replace(/\s+/g, "-").toLowerCase();
@@ -37,6 +43,10 @@ class IssueDialog {
     this.comment = "";
     this.sending = false;
     this.labelText = "";
+    this.touched = new Set(); // fields the user changed in the new-issue form
+    this.suggesting = false;
+    this.checklist = new ChecklistEditor({ dialog: this });
+    this.files = new AttachmentsSection({ dialog: this });
     if (this.create) {
       const { index } = store.state;
       const project = index?.projectById.get(projectId) || index?.projects.find((p) => !p.archived);
@@ -63,13 +73,19 @@ class IssueDialog {
     this.release = store.acquire(store.hass);
     this.unsubscribe = store.subscribe(() => this.onStore());
     this.handle = overlay.dialog(this);
+    this.files.bind();
     if (!this.create) this.loadDetail();
     return this;
   }
 
   onClose() {
+    this.files.unbind();
     this.unsubscribe?.();
     this.release?.();
+  }
+
+  isTop() {
+    return overlay.isTop(this.handle);
   }
 
   close() {
@@ -107,7 +123,7 @@ class IssueDialog {
       return;
     }
     const issue = this.issue;
-    if (issue && `${issue.updated}|${issue.comment_count}` !== this.detailKey) this.loadDetail();
+    if (issue && detailKeyOf(issue) !== this.detailKey) this.loadDetail();
     this.update();
   }
 
@@ -115,7 +131,7 @@ class IssueDialog {
     const issue = this.issue;
     if (!issue || this.loading) return;
     this.loading = true;
-    const key = `${issue.updated}|${issue.comment_count}`;
+    const key = detailKeyOf(issue);
     try {
       this.detail = await actions.getIssue(this.issueId);
       this.detailKey = key;
@@ -124,7 +140,7 @@ class IssueDialog {
     }
     this.loading = false;
     const current = this.issue;
-    if (current && `${current.updated}|${current.comment_count}` !== this.detailKey) {
+    if (current && detailKeyOf(current) !== this.detailKey) {
       this.loadDetail(); // a push arrived while the request was in flight
       return;
     }
@@ -142,6 +158,7 @@ class IssueDialog {
   set(field, value) {
     if (this.create) {
       this.draft[field] = value;
+      this.touched.add(field);
       if (field === "project_id") Object.assign(this.draft, this.defaults(this.index.projectById.get(value)), { summary: this.draft.summary, description: this.draft.description });
       this.update();
       return;
@@ -170,6 +187,7 @@ class IssueDialog {
 
   onEscape() {
     const active = deepActiveElement();
+    if (this.checklist.onEscape(active)) return true;
     const field = active?.dataset?.field;
     if (!this.create && field && TEXT_FIELDS.has(field) && field in this.draft && this.draft[field] !== (this.issue?.[field] || "")) {
       delete this.draft[field];
@@ -177,6 +195,29 @@ class IssueDialog {
       return true;
     }
     return false;
+  }
+
+  /** New-issue form: ask the server for smart defaults for the typed title and fill what is still empty. */
+  async suggest() {
+    const text = this.draft.summary.trim();
+    if (!text || this.suggesting) return;
+    this.suggesting = true;
+    this.update();
+    try {
+      const suggestion = await actions.suggest(text, this.project?.key);
+      const { fields, filled } = hasSuggestion(suggestion) ? suggestionFill(suggestion, this.draft, { touched: this.touched }) : { fields: {}, filled: [] };
+      if (!filled.length) {
+        overlay.toast({ message: t("suggest.none") });
+      } else {
+        Object.assign(this.draft, fields);
+        const fields = filled.map((f) => t(`field.${f}`)).join(", ");
+        overlay.toast({ message: t("suggest.filled", { fields }) + (suggestion.evidence ? ` (${suggestion.evidence})` : "") });
+      }
+    } catch (error) {
+      overlay.toast({ kind: "error", message: error.message });
+    }
+    this.suggesting = false;
+    this.update();
   }
 
   async submitCreate() {
@@ -312,6 +353,7 @@ class IssueDialog {
         oninput: (event) => {
           this.labelText = event.target.value;
           if (event.target.value.endsWith(",")) add(event.target.value);
+          else this.update();
         },
         onkeydown: (event) => {
           if (event.key === "Enter") {
@@ -511,8 +553,16 @@ class IssueDialog {
     const issue = this.issue;
     if (!this.create && !issue) return dialogShell({ title: t("issue"), onClose: () => this.close(), body: h("p.muted", t("loading")) });
 
+    const canSuggest = this.create && store.state.payload.settings?.learning?.defaults;
     const head = [
-      this.textInput("summary", { placeholder: t("summary_placeholder") }),
+      canSuggest
+        ? h(
+            "div.summary-row",
+            { key: "summary-row" },
+            this.textInput("summary", { placeholder: t("summary_placeholder") }),
+            h("button.btn.small", { type: "button", disabled: !this.draft.summary.trim() || this.suggesting, title: t("suggest.button_hint"), onclick: () => this.suggest() }, icon("mdi:auto-fix"), t("suggest.button")),
+          )
+        : this.textInput("summary", { placeholder: t("summary_placeholder") }),
       issue?.source === "health" ? h("p.hint", { key: "auto-hint" }, icon("mdi:robot-outline"), t("auto.hint")) : null,
       h("h3.section-title", { key: "desc-title" }, t("field.description")),
       this.textInput("description", { multiline: true, placeholder: t("description_placeholder") }),
@@ -520,6 +570,8 @@ class IssueDialog {
     const thread = [this.epicChildren()];
     if (!this.create) {
       thread.push(
+        this.checklist.render(),
+        this.files.render(),
         h(
           "div.tabs.small",
           { key: "tabs", role: "tablist" },
@@ -536,7 +588,10 @@ class IssueDialog {
       );
     }
 
-    const body = h("div.issue-layout", h("div.issue-main", h("div.issue-head", head), h("div.issue-thread", thread)), h("div.issue-side", this.fields()));
+    const body = [
+      this.files.dragging ? h("div.drop-overlay", { key: "drop-overlay" }, icon("mdi:paperclip"), t("attachments.drop")) : null,
+      h("div.issue-layout", { key: "layout" }, h("div.issue-main", h("div.issue-head", head), h("div.issue-thread", thread)), h("div.issue-side", this.fields())),
+    ];
     if (this.create) {
       return dialogShell({
         title: t("new_issue"),
