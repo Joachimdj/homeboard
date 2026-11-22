@@ -1,0 +1,677 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Homeboard",
+        "description": "Homeboard adds a kanban board with projects, issues and an automatic smart-home health check. Everything is managed from the Board panel in the sidebar.",
+        "data": {
+          "starter_project": "Create a starter project (HOME)"
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Homeboard is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Homeboard: general",
+        "data": {
+          "due_soon_hours": "Due soon window (hours)",
+          "auto_archive_done_days": "Archive done issues after (days, 0 = never)",
+          "panel_title": "Sidebar title",
+          "panel_icon": "Sidebar icon",
+          "panel_admin_only": "Only show the panel to administrators",
+          "tracked_people": "People with their own sensors (empty = everyone)"
+        }
+      },
+      "notifications": {
+        "title": "Homeboard: notifications",
+        "description": "Push notifications go to the notify services you pick, for example notify.mobile_app_your_phone. Anything fancier is a normal automation on the homeboard_* events.",
+        "data": {
+          "notify_services": "Notify services",
+          "notify_done": "Tell me when an issue is done",
+          "notify_overdue": "Tell me when an issue is overdue",
+          "notify_due_soon": "Tell me when an issue is due soon",
+          "notify_health": "Tell me about new high-priority auto issues"
+        }
+      },
+      "health": {
+        "title": "Homeboard: smart home health",
+        "description": "Homeboard creates issues by itself for things that need fixing and closes them when the fault is gone. Use the scan_health service with dry run to see what it would do before you switch it on.",
+        "data": {
+          "health_enabled": "Create issues automatically",
+          "health_unavailable": "Offline devices",
+          "health_battery": "Low batteries",
+          "health_integrations": "Integration problems and re-authentication",
+          "health_repairs": "Home Assistant repairs",
+          "health_updates": "Available updates (one grouped issue)",
+          "health_unavailable_minutes": "Offline for at least (minutes)",
+          "health_battery_threshold": "Battery warning below (%)",
+          "health_project": "Project key for auto issues (empty = FIX, created on demand)",
+          "health_assignee": "Assign auto issues to",
+          "health_snooze_days": "Snooze days when you close an auto issue",
+          "health_max_open": "Maximum open auto issues",
+          "health_exclude_entities": "Never report these entities",
+          "health_exclude_integrations": "Never report these integrations"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "open_issues": {
+        "name": "Open issues"
+      },
+      "overdue": {
+        "name": "Overdue"
+      },
+      "due_soon": {
+        "name": "Due soon"
+      },
+      "unassigned": {
+        "name": "Unassigned"
+      },
+      "last_activity": {
+        "name": "Last activity"
+      },
+      "total_open": {
+        "name": "Open issues"
+      },
+      "total_overdue": {
+        "name": "Overdue issues"
+      },
+      "total_due_soon": {
+        "name": "Issues due soon"
+      },
+      "auto_issues": {
+        "name": "Auto-generated issues"
+      },
+      "total_last_activity": {
+        "name": "Last activity"
+      }
+    },
+    "binary_sensor": {
+      "has_overdue": {
+        "name": "Has overdue"
+      }
+    },
+    "calendar": {
+      "due_dates": {
+        "name": "Due dates"
+      }
+    }
+  },
+  "selector": {
+    "issue_type": {
+      "options": {
+        "task": "Task",
+        "bug": "Bug",
+        "story": "Story",
+        "epic": "Epic"
+      }
+    },
+    "priority": {
+      "options": {
+        "highest": "Highest",
+        "high": "High",
+        "medium": "Medium",
+        "low": "Low",
+        "lowest": "Lowest"
+      }
+    },
+    "category": {
+      "options": {
+        "todo": "To do",
+        "in_progress": "In progress",
+        "done": "Done"
+      }
+    },
+    "on_duplicate": {
+      "options": {
+        "skip": "Skip",
+        "comment": "Add a comment",
+        "reopen": "Reopen"
+      }
+    },
+    "source": {
+      "options": {
+        "service": "Service",
+        "assist": "Assist",
+        "siri": "Siri / Shortcuts",
+        "automation": "Automation",
+        "sensor": "Sensor"
+      }
+    },
+    "position": {
+      "options": {
+        "top": "Top",
+        "bottom": "Bottom"
+      }
+    },
+    "template": {
+      "options": {
+        "household": "Household",
+        "software": "Software",
+        "blank": "Blank"
+      }
+    }
+  },
+  "services": {
+    "create_issue": {
+      "name": "Create issue",
+      "description": "Create an issue on a board. Returns the key. With a dedupe key it never creates the same open issue twice, so it is safe to call from a sensor trigger.",
+      "fields": {
+        "project": {
+          "name": "Project",
+          "description": "Project key or id."
+        },
+        "summary": {
+          "name": "Summary",
+          "description": "Title of the issue."
+        },
+        "description": {
+          "name": "Description",
+          "description": "Longer description."
+        },
+        "type": {
+          "name": "Type",
+          "description": "Issue type."
+        },
+        "priority": {
+          "name": "Priority",
+          "description": "Priority."
+        },
+        "assignee": {
+          "name": "Assignee",
+          "description": "Person to assign (empty = nobody)."
+        },
+        "labels": {
+          "name": "Labels",
+          "description": "Labels."
+        },
+        "due": {
+          "name": "Due",
+          "description": "Due date (2026-12-01) or date and time with offset."
+        },
+        "parent": {
+          "name": "Epic",
+          "description": "Key of the epic this issue belongs to (empty = none)."
+        },
+        "status": {
+          "name": "Status",
+          "description": "Status (column) name or id. Default: the first To do status."
+        },
+        "dedupe_key": {
+          "name": "Dedupe key",
+          "description": "Stable key such as battery_front_door. An open issue with the same key is not created again."
+        },
+        "on_duplicate": {
+          "name": "On duplicate",
+          "description": "What to do when an open issue with the dedupe key exists (reopen also revives a done one)."
+        },
+        "source": {
+          "name": "Source",
+          "description": "Where the issue comes from."
+        }
+      }
+    },
+    "update_issue": {
+      "name": "Update issue",
+      "description": "Change fields of an issue.",
+      "fields": {
+        "issue": {
+          "name": "Issue",
+          "description": "Issue key (HOME-12) or id. Leave empty when you use project + dedupe key."
+        },
+        "project": {
+          "name": "Project",
+          "description": "Project key or id. Needed together with the dedupe key."
+        },
+        "dedupe_key": {
+          "name": "Dedupe key",
+          "description": "Find the issue by the dedupe key it was created with (newest open issue of the project)."
+        },
+        "summary": {
+          "name": "Summary",
+          "description": "Title of the issue."
+        },
+        "description": {
+          "name": "Description",
+          "description": "Longer description."
+        },
+        "type": {
+          "name": "Type",
+          "description": "Issue type."
+        },
+        "priority": {
+          "name": "Priority",
+          "description": "Priority."
+        },
+        "assignee": {
+          "name": "Assignee",
+          "description": "Person to assign (empty = nobody)."
+        },
+        "labels": {
+          "name": "Labels",
+          "description": "Labels."
+        },
+        "due": {
+          "name": "Due",
+          "description": "Due date (2026-12-01) or date and time with offset."
+        },
+        "parent": {
+          "name": "Epic",
+          "description": "Key of the epic this issue belongs to (empty = none)."
+        },
+        "status": {
+          "name": "Status",
+          "description": "Move to this status (name or id)."
+        }
+      }
+    },
+    "move_issue": {
+      "name": "Move issue",
+      "description": "Move an issue to another status (column).",
+      "fields": {
+        "issue": {
+          "name": "Issue",
+          "description": "Issue key (HOME-12) or id. Leave empty when you use project + dedupe key."
+        },
+        "project": {
+          "name": "Project",
+          "description": "Project key or id. Needed together with the dedupe key."
+        },
+        "dedupe_key": {
+          "name": "Dedupe key",
+          "description": "Find the issue by the dedupe key it was created with (newest open issue of the project)."
+        },
+        "status": {
+          "name": "Status",
+          "description": "Target status name or id."
+        },
+        "position": {
+          "name": "Position",
+          "description": "Place at the top or the bottom of the column."
+        }
+      }
+    },
+    "assign_issue": {
+      "name": "Assign issue",
+      "description": "Assign an issue to a person, or unassign it.",
+      "fields": {
+        "issue": {
+          "name": "Issue",
+          "description": "Issue key (HOME-12) or id. Leave empty when you use project + dedupe key."
+        },
+        "project": {
+          "name": "Project",
+          "description": "Project key or id. Needed together with the dedupe key."
+        },
+        "dedupe_key": {
+          "name": "Dedupe key",
+          "description": "Find the issue by the dedupe key it was created with (newest open issue of the project)."
+        },
+        "assignee": {
+          "name": "Assignee",
+          "description": "Person to assign (empty = nobody)."
+        }
+      }
+    },
+    "add_comment": {
+      "name": "Add comment",
+      "description": "Add a comment to an issue.",
+      "fields": {
+        "issue": {
+          "name": "Issue",
+          "description": "Issue key (HOME-12) or id. Leave empty when you use project + dedupe key."
+        },
+        "project": {
+          "name": "Project",
+          "description": "Project key or id. Needed together with the dedupe key."
+        },
+        "dedupe_key": {
+          "name": "Dedupe key",
+          "description": "Find the issue by the dedupe key it was created with (newest open issue of the project)."
+        },
+        "text": {
+          "name": "Comment",
+          "description": "The comment."
+        }
+      }
+    },
+    "delete_issue": {
+      "name": "Delete issue",
+      "description": "Delete an issue for good.",
+      "fields": {
+        "issue": {
+          "name": "Issue",
+          "description": "Issue key (HOME-12) or id. Leave empty when you use project + dedupe key."
+        },
+        "project": {
+          "name": "Project",
+          "description": "Project key or id. Needed together with the dedupe key."
+        },
+        "dedupe_key": {
+          "name": "Dedupe key",
+          "description": "Find the issue by the dedupe key it was created with (newest open issue of the project)."
+        }
+      }
+    },
+    "quick_add": {
+      "name": "Quick add",
+      "description": "Create an issue from one line of text, for example 'bug: gate squeaks @joachim !high #garden due friday'. For Assist, Siri / Shortcuts and text boxes.",
+      "fields": {
+        "text": {
+          "name": "Text",
+          "description": "The line to parse."
+        },
+        "project": {
+          "name": "Project",
+          "description": "Project key or id (default: the first project)."
+        },
+        "source": {
+          "name": "Source",
+          "description": "Where the text comes from."
+        }
+      }
+    },
+    "create_project": {
+      "name": "Create project",
+      "description": "Create a project (one board).",
+      "fields": {
+        "key": {
+          "name": "Key",
+          "description": "2-6 letters / digits, starts with a letter. Used in issue keys such as HOME-12."
+        },
+        "name": {
+          "name": "Name",
+          "description": "Project name."
+        },
+        "description": {
+          "name": "Description",
+          "description": "Description."
+        },
+        "color": {
+          "name": "Color",
+          "description": "Colour as hex."
+        },
+        "icon": {
+          "name": "Icon",
+          "description": "mdi icon."
+        },
+        "lead": {
+          "name": "Lead",
+          "description": "Project lead."
+        },
+        "template": {
+          "name": "Template",
+          "description": "Starting set of statuses."
+        }
+      }
+    },
+    "update_project": {
+      "name": "Update project",
+      "description": "Change a project.",
+      "fields": {
+        "project": {
+          "name": "Project",
+          "description": "Project key or id."
+        },
+        "name": {
+          "name": "Name",
+          "description": "Project name."
+        },
+        "description": {
+          "name": "Description",
+          "description": "Description."
+        },
+        "color": {
+          "name": "Color",
+          "description": "Colour as hex."
+        },
+        "icon": {
+          "name": "Icon",
+          "description": "mdi icon."
+        },
+        "lead": {
+          "name": "Lead",
+          "description": "Project lead."
+        },
+        "default_assignee": {
+          "name": "Default assignee",
+          "description": "Assignee for new issues without one."
+        },
+        "archived": {
+          "name": "Archived",
+          "description": "Archive the project."
+        }
+      }
+    },
+    "add_status": {
+      "name": "Add status",
+      "description": "Add a status (board column) to a project.",
+      "fields": {
+        "project": {
+          "name": "Project",
+          "description": "Project key or id."
+        },
+        "name": {
+          "name": "Name",
+          "description": "Status name."
+        },
+        "category": {
+          "name": "Category",
+          "description": "Decides what counts as open, in progress and done."
+        },
+        "backlog": {
+          "name": "Backlog",
+          "description": "Keep this status off the board (backlog list only)."
+        },
+        "wip": {
+          "name": "WIP limit",
+          "description": "Soft limit of issues in this status (empty = none)."
+        },
+        "position": {
+          "name": "Position",
+          "description": "Index to insert at (default: last)."
+        }
+      }
+    },
+    "update_status": {
+      "name": "Update status",
+      "description": "Rename or change a status.",
+      "fields": {
+        "project": {
+          "name": "Project",
+          "description": "Project key or id."
+        },
+        "status": {
+          "name": "Status",
+          "description": "Status name or id."
+        },
+        "name": {
+          "name": "Name",
+          "description": "New name."
+        },
+        "category": {
+          "name": "Category",
+          "description": "New category."
+        },
+        "backlog": {
+          "name": "Backlog",
+          "description": "Backlog flag."
+        },
+        "wip": {
+          "name": "WIP limit",
+          "description": "Soft limit (0 / empty = none)."
+        }
+      }
+    },
+    "remove_status": {
+      "name": "Remove status",
+      "description": "Remove a status. Its issues move to another status.",
+      "fields": {
+        "project": {
+          "name": "Project",
+          "description": "Project key or id."
+        },
+        "status": {
+          "name": "Status",
+          "description": "Status to remove (name or id)."
+        },
+        "move_to": {
+          "name": "Move issues to",
+          "description": "Required when the status still has issues."
+        }
+      }
+    },
+    "create_recurring": {
+      "name": "Create recurring chore",
+      "description": "Create an issue on a schedule, for example the bins every Wednesday.",
+      "fields": {
+        "project": {
+          "name": "Project",
+          "description": "Project key or id."
+        },
+        "summary": {
+          "name": "Summary",
+          "description": "Title."
+        },
+        "repeat": {
+          "name": "Repeat",
+          "description": "Rule: {unit: day|week|month|year, every: 1, weekdays: [0-6] (Mon=0), day_of_month: 1-31 or -1}."
+        },
+        "next_due": {
+          "name": "Next due",
+          "description": "Due date of the next issue."
+        },
+        "description": {
+          "name": "Description",
+          "description": "Description of the created issues."
+        },
+        "type": {
+          "name": "Type",
+          "description": "Issue type."
+        },
+        "priority": {
+          "name": "Priority",
+          "description": "Priority."
+        },
+        "assignee": {
+          "name": "Assignee",
+          "description": "Person to assign."
+        },
+        "labels": {
+          "name": "Labels",
+          "description": "Labels."
+        },
+        "status": {
+          "name": "Status",
+          "description": "Status for new issues (default: first To do)."
+        },
+        "create_days_before": {
+          "name": "Create days before",
+          "description": "Create the issue this many days before it is due."
+        },
+        "skip_if_open": {
+          "name": "Skip if open",
+          "description": "Do not create a new issue while the previous one is still open."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Switch the chore on or off."
+        }
+      }
+    },
+    "update_recurring": {
+      "name": "Update recurring chore",
+      "description": "Change a recurring chore.",
+      "fields": {
+        "recurring_id": {
+          "name": "Recurring id",
+          "description": "Id returned when it was created."
+        },
+        "summary": {
+          "name": "Summary",
+          "description": "Title."
+        },
+        "repeat": {
+          "name": "Repeat",
+          "description": "Rule: {unit: day|week|month|year, every: 1, weekdays: [0-6] (Mon=0), day_of_month: 1-31 or -1}."
+        },
+        "next_due": {
+          "name": "Next due",
+          "description": "Due date of the next issue."
+        },
+        "description": {
+          "name": "Description",
+          "description": "Description of the created issues."
+        },
+        "type": {
+          "name": "Type",
+          "description": "Issue type."
+        },
+        "priority": {
+          "name": "Priority",
+          "description": "Priority."
+        },
+        "assignee": {
+          "name": "Assignee",
+          "description": "Person to assign."
+        },
+        "labels": {
+          "name": "Labels",
+          "description": "Labels."
+        },
+        "status": {
+          "name": "Status",
+          "description": "Status for new issues (default: first To do)."
+        },
+        "create_days_before": {
+          "name": "Create days before",
+          "description": "Create the issue this many days before it is due."
+        },
+        "skip_if_open": {
+          "name": "Skip if open",
+          "description": "Do not create a new issue while the previous one is still open."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Switch the chore on or off."
+        }
+      }
+    },
+    "delete_recurring": {
+      "name": "Delete recurring chore",
+      "description": "Delete a recurring chore (issues it made stay).",
+      "fields": {
+        "recurring_id": {
+          "name": "Recurring id",
+          "description": "Id of the chore."
+        }
+      }
+    },
+    "run_recurring": {
+      "name": "Run recurring chore now",
+      "description": "Create the issue of a recurring chore right now.",
+      "fields": {
+        "recurring_id": {
+          "name": "Recurring id",
+          "description": "Id of the chore."
+        }
+      }
+    },
+    "scan_health": {
+      "name": "Scan smart home health",
+      "description": "Look for faults (offline devices, low batteries, repairs, integration problems) and create, update or close issues. A manual scan acts immediately; with dry run it only reports.",
+      "fields": {
+        "dry_run": {
+          "name": "Dry run",
+          "description": "Only report what would happen, change nothing."
+        }
+      }
+    }
+  }
+}

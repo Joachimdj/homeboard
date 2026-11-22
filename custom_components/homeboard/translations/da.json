@@ -1,0 +1,677 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Opsæt Homeboard",
+        "description": "Homeboard giver en kanban-tavle med projekter, opgaver og et automatisk smart home-sundhedstjek. Alt styres fra panelet Tavle i sidebjælken.",
+        "data": {
+          "starter_project": "Opret et startprojekt (HOME)"
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Homeboard er allerede sat op."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Homeboard: generelt",
+        "data": {
+          "due_soon_hours": "Snart forfalden-vindue (timer)",
+          "auto_archive_done_days": "Arkivér færdige opgaver efter (dage, 0 = aldrig)",
+          "panel_title": "Titel i sidebjælken",
+          "panel_icon": "Ikon i sidebjælken",
+          "panel_admin_only": "Vis kun panelet for administratorer",
+          "tracked_people": "Personer med egne sensorer (tom = alle)"
+        }
+      },
+      "notifications": {
+        "title": "Homeboard: notifikationer",
+        "description": "Push-beskeder sendes til de notify-tjenester du vælger, fx notify.mobile_app_din_telefon. Alt mere avanceret er en almindelig automatisering på homeboard_*-hændelserne.",
+        "data": {
+          "notify_services": "Notify-tjenester",
+          "notify_done": "Giv besked når en opgave er færdig",
+          "notify_overdue": "Giv besked når en opgave er forfalden",
+          "notify_due_soon": "Giv besked når en opgave snart forfalder",
+          "notify_health": "Giv besked om nye automatiske opgaver med høj prioritet"
+        }
+      },
+      "health": {
+        "title": "Homeboard: smart home-sundhed",
+        "description": "Homeboard opretter selv opgaver for ting der skal ordnes og lukker dem igen når fejlen er væk. Kør tjenesten scan_health med tørløb for at se hvad den ville gøre, før du slår det til.",
+        "data": {
+          "health_enabled": "Opret opgaver automatisk",
+          "health_unavailable": "Offline enheder",
+          "health_battery": "Svage batterier",
+          "health_integrations": "Integrationsproblemer og ny login",
+          "health_repairs": "Home Assistant-reparationer",
+          "health_updates": "Tilgængelige opdateringer (én samlet opgave)",
+          "health_unavailable_minutes": "Offline i mindst (minutter)",
+          "health_battery_threshold": "Batteriadvarsel under (%)",
+          "health_project": "Projektnøgle til automatiske opgaver (tom = FIX, oprettes ved behov)",
+          "health_assignee": "Tildel automatiske opgaver til",
+          "health_snooze_days": "Udsæt i dage når du lukker en automatisk opgave",
+          "health_max_open": "Maks. åbne automatiske opgaver",
+          "health_exclude_entities": "Rapportér aldrig disse entiteter",
+          "health_exclude_integrations": "Rapportér aldrig disse integrationer"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "open_issues": {
+        "name": "Åbne opgaver"
+      },
+      "overdue": {
+        "name": "Forfaldne"
+      },
+      "due_soon": {
+        "name": "Forfalder snart"
+      },
+      "unassigned": {
+        "name": "Uden ansvarlig"
+      },
+      "last_activity": {
+        "name": "Seneste aktivitet"
+      },
+      "total_open": {
+        "name": "Åbne opgaver"
+      },
+      "total_overdue": {
+        "name": "Forfaldne opgaver"
+      },
+      "total_due_soon": {
+        "name": "Opgaver der forfalder snart"
+      },
+      "auto_issues": {
+        "name": "Automatisk oprettede opgaver"
+      },
+      "total_last_activity": {
+        "name": "Seneste aktivitet"
+      }
+    },
+    "binary_sensor": {
+      "has_overdue": {
+        "name": "Har forfaldne"
+      }
+    },
+    "calendar": {
+      "due_dates": {
+        "name": "Frister"
+      }
+    }
+  },
+  "selector": {
+    "issue_type": {
+      "options": {
+        "task": "Opgave",
+        "bug": "Fejl",
+        "story": "Historie",
+        "epic": "Epic"
+      }
+    },
+    "priority": {
+      "options": {
+        "highest": "Højeste",
+        "high": "Høj",
+        "medium": "Mellem",
+        "low": "Lav",
+        "lowest": "Laveste"
+      }
+    },
+    "category": {
+      "options": {
+        "todo": "Skal laves",
+        "in_progress": "I gang",
+        "done": "Færdig"
+      }
+    },
+    "on_duplicate": {
+      "options": {
+        "skip": "Spring over",
+        "comment": "Tilføj en kommentar",
+        "reopen": "Genåbn"
+      }
+    },
+    "source": {
+      "options": {
+        "service": "Tjeneste",
+        "assist": "Assist",
+        "siri": "Siri / Genveje",
+        "automation": "Automatisering",
+        "sensor": "Sensor"
+      }
+    },
+    "position": {
+      "options": {
+        "top": "Øverst",
+        "bottom": "Nederst"
+      }
+    },
+    "template": {
+      "options": {
+        "household": "Husholdning",
+        "software": "Software",
+        "blank": "Tom"
+      }
+    }
+  },
+  "services": {
+    "create_issue": {
+      "name": "Opret opgave",
+      "description": "Opretter en opgave på en tavle og returnerer nøglen. Med en dedupe-nøgle oprettes aldrig samme åbne opgave to gange, så den er sikker at kalde fra en sensor.",
+      "fields": {
+        "project": {
+          "name": "Projekt",
+          "description": "Projektnøgle eller id."
+        },
+        "summary": {
+          "name": "Titel",
+          "description": "Opgavens titel."
+        },
+        "description": {
+          "name": "Beskrivelse",
+          "description": "Længere beskrivelse."
+        },
+        "type": {
+          "name": "Type",
+          "description": "Opgavetype."
+        },
+        "priority": {
+          "name": "Prioritet",
+          "description": "Prioritet."
+        },
+        "assignee": {
+          "name": "Ansvarlig",
+          "description": "Person der får opgaven (tom = ingen)."
+        },
+        "labels": {
+          "name": "Etiketter",
+          "description": "Etiketter."
+        },
+        "due": {
+          "name": "Frist",
+          "description": "Frist som dato (2026-12-01) eller dato og tid med tidszone."
+        },
+        "parent": {
+          "name": "Epic",
+          "description": "Nøglen på den epic opgaven hører til (tom = ingen)."
+        },
+        "status": {
+          "name": "Status",
+          "description": "Status (kolonne) som navn eller id."
+        },
+        "dedupe_key": {
+          "name": "Dedupe-nøgle",
+          "description": "Stabil nøgle, fx battery_front_door. En åben opgave med samme nøgle oprettes ikke igen."
+        },
+        "on_duplicate": {
+          "name": "Ved dublet",
+          "description": "Hvad der sker, hvis en åben opgave med samme dedupe-nøgle findes (reopen genåbner også en færdig)."
+        },
+        "source": {
+          "name": "Kilde",
+          "description": "Hvor opgaven kommer fra."
+        }
+      }
+    },
+    "update_issue": {
+      "name": "Opdater opgave",
+      "description": "Ændrer felter på en opgave.",
+      "fields": {
+        "issue": {
+          "name": "Opgave",
+          "description": "Nøgle (HOME-12) eller id. Lad den stå tom, hvis du bruger projekt + dedupe-nøgle."
+        },
+        "project": {
+          "name": "Projekt",
+          "description": "Projektnøgle eller id."
+        },
+        "dedupe_key": {
+          "name": "Dedupe-nøgle",
+          "description": "Stabil nøgle, fx battery_front_door. En åben opgave med samme nøgle oprettes ikke igen."
+        },
+        "summary": {
+          "name": "Titel",
+          "description": "Opgavens titel."
+        },
+        "description": {
+          "name": "Beskrivelse",
+          "description": "Længere beskrivelse."
+        },
+        "type": {
+          "name": "Type",
+          "description": "Opgavetype."
+        },
+        "priority": {
+          "name": "Prioritet",
+          "description": "Prioritet."
+        },
+        "assignee": {
+          "name": "Ansvarlig",
+          "description": "Person der får opgaven (tom = ingen)."
+        },
+        "labels": {
+          "name": "Etiketter",
+          "description": "Etiketter."
+        },
+        "due": {
+          "name": "Frist",
+          "description": "Frist som dato (2026-12-01) eller dato og tid med tidszone."
+        },
+        "parent": {
+          "name": "Epic",
+          "description": "Nøglen på den epic opgaven hører til (tom = ingen)."
+        },
+        "status": {
+          "name": "Status",
+          "description": "Status (kolonne) som navn eller id."
+        }
+      }
+    },
+    "move_issue": {
+      "name": "Flyt opgave",
+      "description": "Flytter en opgave til en anden status (kolonne).",
+      "fields": {
+        "issue": {
+          "name": "Opgave",
+          "description": "Nøgle (HOME-12) eller id. Lad den stå tom, hvis du bruger projekt + dedupe-nøgle."
+        },
+        "project": {
+          "name": "Projekt",
+          "description": "Projektnøgle eller id."
+        },
+        "dedupe_key": {
+          "name": "Dedupe-nøgle",
+          "description": "Stabil nøgle, fx battery_front_door. En åben opgave med samme nøgle oprettes ikke igen."
+        },
+        "status": {
+          "name": "Status",
+          "description": "Status (kolonne) som navn eller id."
+        },
+        "position": {
+          "name": "Placering",
+          "description": "Øverst eller nederst i kolonnen."
+        }
+      }
+    },
+    "assign_issue": {
+      "name": "Tildel opgave",
+      "description": "Tildeler en opgave til en person eller fjerner tildelingen.",
+      "fields": {
+        "issue": {
+          "name": "Opgave",
+          "description": "Nøgle (HOME-12) eller id. Lad den stå tom, hvis du bruger projekt + dedupe-nøgle."
+        },
+        "project": {
+          "name": "Projekt",
+          "description": "Projektnøgle eller id."
+        },
+        "dedupe_key": {
+          "name": "Dedupe-nøgle",
+          "description": "Stabil nøgle, fx battery_front_door. En åben opgave med samme nøgle oprettes ikke igen."
+        },
+        "assignee": {
+          "name": "Ansvarlig",
+          "description": "Person der får opgaven (tom = ingen)."
+        }
+      }
+    },
+    "add_comment": {
+      "name": "Tilføj kommentar",
+      "description": "Tilføjer en kommentar til en opgave.",
+      "fields": {
+        "issue": {
+          "name": "Opgave",
+          "description": "Nøgle (HOME-12) eller id. Lad den stå tom, hvis du bruger projekt + dedupe-nøgle."
+        },
+        "project": {
+          "name": "Projekt",
+          "description": "Projektnøgle eller id."
+        },
+        "dedupe_key": {
+          "name": "Dedupe-nøgle",
+          "description": "Stabil nøgle, fx battery_front_door. En åben opgave med samme nøgle oprettes ikke igen."
+        },
+        "text": {
+          "name": "Tekst",
+          "description": "Teksten der skal fortolkes."
+        }
+      }
+    },
+    "delete_issue": {
+      "name": "Slet opgave",
+      "description": "Sletter en opgave for altid.",
+      "fields": {
+        "issue": {
+          "name": "Opgave",
+          "description": "Nøgle (HOME-12) eller id. Lad den stå tom, hvis du bruger projekt + dedupe-nøgle."
+        },
+        "project": {
+          "name": "Projekt",
+          "description": "Projektnøgle eller id."
+        },
+        "dedupe_key": {
+          "name": "Dedupe-nøgle",
+          "description": "Stabil nøgle, fx battery_front_door. En åben opgave med samme nøgle oprettes ikke igen."
+        }
+      }
+    },
+    "quick_add": {
+      "name": "Hurtig tilføjelse",
+      "description": "Opretter en opgave ud fra én linje tekst, fx 'bug: låge knirker @joachim !high #have due fredag'. Til Assist, Siri/Genveje og tekstfelter.",
+      "fields": {
+        "text": {
+          "name": "Tekst",
+          "description": "Teksten der skal fortolkes."
+        },
+        "project": {
+          "name": "Projekt",
+          "description": "Projektnøgle eller id."
+        },
+        "source": {
+          "name": "Kilde",
+          "description": "Hvor opgaven kommer fra."
+        }
+      }
+    },
+    "create_project": {
+      "name": "Opret projekt",
+      "description": "Opretter et projekt (en tavle).",
+      "fields": {
+        "key": {
+          "name": "Nøgle",
+          "description": "2-6 bogstaver/cifre, begynder med bogstav. Bruges i nøgler som HOME-12."
+        },
+        "name": {
+          "name": "Navn",
+          "description": "Navn."
+        },
+        "description": {
+          "name": "Beskrivelse",
+          "description": "Længere beskrivelse."
+        },
+        "color": {
+          "name": "Farve",
+          "description": "Farve som hex."
+        },
+        "icon": {
+          "name": "Ikon",
+          "description": "mdi-ikon."
+        },
+        "lead": {
+          "name": "Leder",
+          "description": "Projektleder."
+        },
+        "template": {
+          "name": "Skabelon",
+          "description": "Startsæt af statusser."
+        }
+      }
+    },
+    "update_project": {
+      "name": "Opdater projekt",
+      "description": "Ændrer et projekt.",
+      "fields": {
+        "project": {
+          "name": "Projekt",
+          "description": "Projektnøgle eller id."
+        },
+        "name": {
+          "name": "Navn",
+          "description": "Navn."
+        },
+        "description": {
+          "name": "Beskrivelse",
+          "description": "Længere beskrivelse."
+        },
+        "color": {
+          "name": "Farve",
+          "description": "Farve som hex."
+        },
+        "icon": {
+          "name": "Ikon",
+          "description": "mdi-ikon."
+        },
+        "lead": {
+          "name": "Leder",
+          "description": "Projektleder."
+        },
+        "default_assignee": {
+          "name": "Standardansvarlig",
+          "description": "Ansvarlig for nye opgaver uden en."
+        },
+        "archived": {
+          "name": "Arkiveret",
+          "description": "Arkivér projektet."
+        }
+      }
+    },
+    "add_status": {
+      "name": "Tilføj status",
+      "description": "Tilføjer en status (kolonne) til et projekt.",
+      "fields": {
+        "project": {
+          "name": "Projekt",
+          "description": "Projektnøgle eller id."
+        },
+        "name": {
+          "name": "Navn",
+          "description": "Navn."
+        },
+        "category": {
+          "name": "Kategori",
+          "description": "Afgør hvad der tæller som åben, i gang og færdig."
+        },
+        "backlog": {
+          "name": "Backlog",
+          "description": "Hold statussen væk fra tavlen (kun backlog-listen)."
+        },
+        "wip": {
+          "name": "WIP-grænse",
+          "description": "Blød grænse for antal opgaver i statussen (tom = ingen)."
+        },
+        "position": {
+          "name": "Placering",
+          "description": "Øverst eller nederst i kolonnen."
+        }
+      }
+    },
+    "update_status": {
+      "name": "Opdater status",
+      "description": "Omdøber eller ændrer en status.",
+      "fields": {
+        "project": {
+          "name": "Projekt",
+          "description": "Projektnøgle eller id."
+        },
+        "status": {
+          "name": "Status",
+          "description": "Status (kolonne) som navn eller id."
+        },
+        "name": {
+          "name": "Navn",
+          "description": "Navn."
+        },
+        "category": {
+          "name": "Kategori",
+          "description": "Afgør hvad der tæller som åben, i gang og færdig."
+        },
+        "backlog": {
+          "name": "Backlog",
+          "description": "Hold statussen væk fra tavlen (kun backlog-listen)."
+        },
+        "wip": {
+          "name": "WIP-grænse",
+          "description": "Blød grænse for antal opgaver i statussen (tom = ingen)."
+        }
+      }
+    },
+    "remove_status": {
+      "name": "Fjern status",
+      "description": "Fjerner en status. Dens opgaver flyttes til en anden status.",
+      "fields": {
+        "project": {
+          "name": "Projekt",
+          "description": "Projektnøgle eller id."
+        },
+        "status": {
+          "name": "Status",
+          "description": "Status (kolonne) som navn eller id."
+        },
+        "move_to": {
+          "name": "Flyt opgaver til",
+          "description": "Kræves hvis statussen stadig har opgaver."
+        }
+      }
+    },
+    "create_recurring": {
+      "name": "Opret tilbagevendende opgave",
+      "description": "Opretter en opgave efter en plan, fx skraldespandene hver onsdag.",
+      "fields": {
+        "project": {
+          "name": "Projekt",
+          "description": "Projektnøgle eller id."
+        },
+        "summary": {
+          "name": "Titel",
+          "description": "Opgavens titel."
+        },
+        "repeat": {
+          "name": "Gentagelse",
+          "description": "Regel: {unit: day|week|month|year, every: 1, weekdays: [0-6] (man=0), day_of_month: 1-31 eller -1}."
+        },
+        "next_due": {
+          "name": "Næste frist",
+          "description": "Fristen på den næste opgave."
+        },
+        "description": {
+          "name": "Beskrivelse",
+          "description": "Længere beskrivelse."
+        },
+        "type": {
+          "name": "Type",
+          "description": "Opgavetype."
+        },
+        "priority": {
+          "name": "Prioritet",
+          "description": "Prioritet."
+        },
+        "assignee": {
+          "name": "Ansvarlig",
+          "description": "Person der får opgaven (tom = ingen)."
+        },
+        "labels": {
+          "name": "Etiketter",
+          "description": "Etiketter."
+        },
+        "status": {
+          "name": "Status",
+          "description": "Status (kolonne) som navn eller id."
+        },
+        "create_days_before": {
+          "name": "Opret dage før",
+          "description": "Opret opgaven så mange dage før fristen."
+        },
+        "skip_if_open": {
+          "name": "Spring over hvis åben",
+          "description": "Opret ikke en ny, mens den forrige stadig er åben."
+        },
+        "enabled": {
+          "name": "Aktiv",
+          "description": "Slå opgaven til eller fra."
+        }
+      }
+    },
+    "update_recurring": {
+      "name": "Opdater tilbagevendende opgave",
+      "description": "Ændrer en tilbagevendende opgave.",
+      "fields": {
+        "recurring_id": {
+          "name": "Gentagelses-id",
+          "description": "Id'et fra da den blev oprettet."
+        },
+        "summary": {
+          "name": "Titel",
+          "description": "Opgavens titel."
+        },
+        "repeat": {
+          "name": "Gentagelse",
+          "description": "Regel: {unit: day|week|month|year, every: 1, weekdays: [0-6] (man=0), day_of_month: 1-31 eller -1}."
+        },
+        "next_due": {
+          "name": "Næste frist",
+          "description": "Fristen på den næste opgave."
+        },
+        "description": {
+          "name": "Beskrivelse",
+          "description": "Længere beskrivelse."
+        },
+        "type": {
+          "name": "Type",
+          "description": "Opgavetype."
+        },
+        "priority": {
+          "name": "Prioritet",
+          "description": "Prioritet."
+        },
+        "assignee": {
+          "name": "Ansvarlig",
+          "description": "Person der får opgaven (tom = ingen)."
+        },
+        "labels": {
+          "name": "Etiketter",
+          "description": "Etiketter."
+        },
+        "status": {
+          "name": "Status",
+          "description": "Status (kolonne) som navn eller id."
+        },
+        "create_days_before": {
+          "name": "Opret dage før",
+          "description": "Opret opgaven så mange dage før fristen."
+        },
+        "skip_if_open": {
+          "name": "Spring over hvis åben",
+          "description": "Opret ikke en ny, mens den forrige stadig er åben."
+        },
+        "enabled": {
+          "name": "Aktiv",
+          "description": "Slå opgaven til eller fra."
+        }
+      }
+    },
+    "delete_recurring": {
+      "name": "Slet tilbagevendende opgave",
+      "description": "Sletter en tilbagevendende opgave (opgaver den har lavet bliver).",
+      "fields": {
+        "recurring_id": {
+          "name": "Gentagelses-id",
+          "description": "Id'et fra da den blev oprettet."
+        }
+      }
+    },
+    "run_recurring": {
+      "name": "Kør tilbagevendende opgave nu",
+      "description": "Opretter opgaven for en tilbagevendende opgave med det samme.",
+      "fields": {
+        "recurring_id": {
+          "name": "Gentagelses-id",
+          "description": "Id'et fra da den blev oprettet."
+        }
+      }
+    },
+    "scan_health": {
+      "name": "Scan smart home-sundhed",
+      "description": "Leder efter fejl (offline enheder, svage batterier, reparationer, integrationsproblemer) og opretter, opdaterer eller lukker opgaver. En manuel scanning virker med det samme; med tørløb rapporterer den kun.",
+      "fields": {
+        "dry_run": {
+          "name": "Tørløb",
+          "description": "Rapportér kun hvad der ville ske, uden at ændre noget."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,23 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+addopts = "-q"
+markers = ["real_frontend: run with the real http and frontend components"]
+
+[tool.coverage.run]
+source = ["custom_components/homeboard"]
+omit = ["custom_components/homeboard/static/*"]
+
+[tool.ruff]
+extend-exclude = [".hassfest", "tests/browser", "custom_components/homeboard/static"]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501", "RUF012", "SIM105", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B018", "RUF001"]
+"scripts/gen_strings.py" = ["E731", "RUF005", "B007"]

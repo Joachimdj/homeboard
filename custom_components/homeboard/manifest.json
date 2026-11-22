@@ -1,0 +1,21 @@
+{
+  "domain": "homeboard",
+  "name": "Homeboard",
+  "codeowners": ["@joachimdj"],
+  "config_flow": true,
+  "dependencies": [
+    "http",
+    "websocket_api",
+    "frontend",
+    "panel_custom",
+    "todo",
+    "calendar",
+    "person"
+  ],
+  "documentation": "https://github.com/Joachimdj/homeboard",
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/Joachimdj/homeboard/issues",
+  "single_config_entry": true,
+  "version": "0.1.0"
+}

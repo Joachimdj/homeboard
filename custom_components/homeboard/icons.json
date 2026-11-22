@@ -1,0 +1,96 @@
+{
+  "services": {
+    "create_issue": {
+      "service": "mdi:plus-box"
+    },
+    "update_issue": {
+      "service": "mdi:pencil"
+    },
+    "move_issue": {
+      "service": "mdi:arrow-right-bold-box"
+    },
+    "assign_issue": {
+      "service": "mdi:account-arrow-right"
+    },
+    "add_comment": {
+      "service": "mdi:comment-plus"
+    },
+    "delete_issue": {
+      "service": "mdi:delete"
+    },
+    "quick_add": {
+      "service": "mdi:flash"
+    },
+    "create_project": {
+      "service": "mdi:folder-plus"
+    },
+    "update_project": {
+      "service": "mdi:folder-edit"
+    },
+    "add_status": {
+      "service": "mdi:view-column"
+    },
+    "update_status": {
+      "service": "mdi:table-column"
+    },
+    "remove_status": {
+      "service": "mdi:table-column-remove"
+    },
+    "create_recurring": {
+      "service": "mdi:calendar-sync"
+    },
+    "update_recurring": {
+      "service": "mdi:calendar-edit"
+    },
+    "delete_recurring": {
+      "service": "mdi:calendar-remove"
+    },
+    "run_recurring": {
+      "service": "mdi:calendar-check"
+    },
+    "scan_health": {
+      "service": "mdi:stethoscope"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "overdue": {
+        "default": "mdi:alert-circle-outline"
+      },
+      "due_soon": {
+        "default": "mdi:clock-alert-outline"
+      },
+      "open_issues": {
+        "default": "mdi:format-list-checks"
+      },
+      "unassigned": {
+        "default": "mdi:account-question"
+      },
+      "auto_issues": {
+        "default": "mdi:robot-outline"
+      },
+      "total_overdue": {
+        "default": "mdi:alert-circle-outline"
+      },
+      "total_due_soon": {
+        "default": "mdi:clock-alert-outline"
+      },
+      "total_open": {
+        "default": "mdi:format-list-checks"
+      }
+    },
+    "binary_sensor": {
+      "has_overdue": {
+        "default": "mdi:check-circle-outline",
+        "state": {
+          "on": "mdi:alert-circle"
+        }
+      }
+    },
+    "calendar": {
+      "due_dates": {
+        "default": "mdi:calendar-clock"
+      }
+    }
+  }
+}

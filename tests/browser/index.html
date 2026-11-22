@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Homeboard harness</title>
+  <style>
+    :root {
+      --primary-color: #03a9f4;
+      --text-primary-color: #fff;
+      --primary-background-color: #fafafa;
+      --secondary-background-color: #e8e8e8;
+      --card-background-color: #fff;
+      --primary-text-color: #212121;
+      --secondary-text-color: #727272;
+      --divider-color: #e0e0e0;
+      --app-header-background-color: #03a9f4;
+      --app-header-text-color: #fff;
+      --error-color: #db4437;
+      --warning-color: #ffa600;
+      --success-color: #43a047;
+      --ha-card-border-radius: 12px;
+    }
+    :root[data-theme="dark"] {
+      --primary-background-color: #111;
+      --secondary-background-color: #2a2a2a;
+      --card-background-color: #1c1c1c;
+      --primary-text-color: #e1e1e1;
+      --secondary-text-color: #9b9b9b;
+      --divider-color: rgba(225, 225, 225, .14);
+      --app-header-background-color: #1c1c1c;
+      --app-header-text-color: #e1e1e1;
+    }
+    body { margin: 0; background: var(--primary-background-color); color: var(--primary-text-color); font-family: Roboto, system-ui, sans-serif; }
+    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 8px 12px; border-bottom: 1px solid var(--divider-color); background: var(--card-background-color); font-size: 13px; }
+    .controls label { display: inline-flex; align-items: center; gap: 4px; }
+    .controls button, .controls select { font: inherit; }
+    #frame { height: 720px; max-width: 100%; margin: 12px auto; border: 1px solid var(--divider-color); overflow: hidden; background: var(--primary-background-color); }
+    #frame homeboard-panel { height: 100%; }
+    h2 { margin: 24px 12px 8px; font-size: 16px; font-weight: 500; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; padding: 0 12px 12px; align-items: start; }
+    .cards .wide { grid-column: 1 / -1; }
+    .editors { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; padding: 0 12px 24px; }
+    .editors > div { min-width: 0; padding: 12px; background: var(--card-background-color); border: 1px solid var(--divider-color); border-radius: 12px; }
+    pre { margin: 8px 0 0; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--secondary-text-color); }
+  </style>
+</head>
+<body>
+  <div class="controls" id="controls">
+    <label><input type="checkbox" id="admin" checked> Admin</label>
+    <label>Language
+      <select id="language"><option value="en">English</option><option value="da">Dansk</option></select>
+    </label>
+    <label><input type="checkbox" id="dark"> Dark</label>
+    <label><input type="checkbox" id="kiosk"> Kiosk</label>
+    <label>Width
+      <select id="width"><option value="">Desktop</option><option value="768px">Tablet 768</option><option value="390px">Phone 390</option></select>
+    </label>
+    <label>Latency <input type="number" id="latency" value="25" min="0" step="50" style="width:64px"> ms</label>
+    <label>Push lag <input type="number" id="pushlag" value="0" min="0" step="50" style="width:64px"> ms</label>
+    <button id="reset">Reset demo data</button>
+  </div>
+
+  <div id="frame"></div>
+
+  <h2>Cards</h2>
+  <div class="cards" id="cards"></div>
+
+  <h2>Card editors</h2>
+  <div class="editors" id="editors"></div>
+
+  <script type="module">
+    import { MockBackend } from "./mock-backend.js";
+    import { MockHass } from "./mock-hass.js";
+
+    const query = new URLSearchParams(location.search);
+    let backend = new MockBackend({ seed: !query.has("empty") });
+    const mock = new MockHass(backend, { language: query.get("lang") || "en", dark: query.has("dark") });
+    window.mock = mock;
+    window.backend = backend;
+
+    // Same entry modules HA loads.
+    await import("../../custom_components/homeboard/static/homeboard-panel.js");
+    await import("../../custom_components/homeboard/static/homeboard-card.js");
+
+    const frame = document.getElementById("frame");
+    const panel = document.createElement("homeboard-panel");
+    panel.narrow = false;
+    panel.route = { prefix: "/homeboard", path: "" };
+    panel.panel = { title: "Board", url_path: "homeboard" };
+    panel.hass = mock.hass;
+    frame.append(panel);
+
+    const cardConfigs = [
+      { type: "custom:homeboard-board-card", project: "HOME", max_height: 420 },
+      { type: "custom:homeboard-status-card", show_people: true, show_health: true, title: "Homeboard status" },
+      { type: "custom:homeboard-quick-add-card", title: "Quick add", project: "HOME" },
+    ];
+    const cards = cardConfigs.map((config) => {
+      const element = document.createElement(config.type.replace("custom:", ""));
+      element.setConfig(config);
+      element.hass = mock.hass;
+      return { element, config };
+    });
+    const cardHost = document.getElementById("cards");
+    cards[0].element.classList.add("wide");
+    for (const { element } of cards) cardHost.append(element);
+
+    const editorHost = document.getElementById("editors");
+    for (const { element, config } of cards) {
+      const name = element.localName;
+      const editor = element.constructor.getConfigElement();
+      const box = document.createElement("div");
+      const log = document.createElement("pre");
+      editor.setConfig(config);
+      editor.hass = mock.hass;
+      editor.addEventListener("config-changed", (event) => {
+        element.setConfig(event.detail.config);
+        editor.setConfig(event.detail.config);
+        log.textContent = JSON.stringify(event.detail.config, null, 1);
+      });
+      log.textContent = `${name}\n${JSON.stringify(config)}`;
+      box.append(editor, log);
+      editorHost.append(box);
+    }
+
+    const everything = () => [panel, ...cards.map((c) => c.element)];
+    const push = () => everything().forEach((el) => { el.hass = mock.hass; });
+    const $ = (id) => document.getElementById(id);
+
+    $("admin").onchange = (e) => { mock.configure({ admin: e.target.checked }); push(); };
+    $("language").onchange = (e) => { mock.configure({ language: e.target.value }); document.documentElement.lang = e.target.value; push(); };
+    $("dark").onchange = (e) => {
+      document.documentElement.dataset.theme = e.target.checked ? "dark" : "light";
+      mock.configure({ dark: e.target.checked });
+      push();
+    };
+    $("kiosk").onchange = (e) => {
+      const url = new URL(location.href);
+      if (e.target.checked) url.searchParams.set("kiosk", "");
+      else url.searchParams.delete("kiosk");
+      history.replaceState(null, "", url);
+      window.dispatchEvent(new CustomEvent("location-changed"));
+    };
+    $("width").onchange = (e) => {
+      frame.style.width = e.target.value;
+      cardHost.style.width = e.target.value;
+      cardHost.style.margin = e.target.value ? "0 auto" : "";
+      panel.narrow = Boolean(e.target.value) && parseInt(e.target.value) < 700;
+    };
+    $("latency").onchange = (e) => { mock.latency = Number(e.target.value); };
+    $("pushlag").onchange = (e) => { mock.pushDelay = Number(e.target.value); };
+    $("reset").onclick = () => {
+      const fresh = new MockBackend();
+      backend.projects = fresh.projects;
+      backend.issues = fresh.issues;
+      backend.recurring = fresh.recurring;
+      backend.counter = fresh.counter;
+      backend.changed();
+    };
+
+    if (query.has("dark")) { $("dark").checked = true; document.documentElement.dataset.theme = "dark"; }
+    if (query.get("lang")) { $("language").value = query.get("lang"); document.documentElement.lang = query.get("lang"); }
+    if (query.has("kiosk")) $("kiosk").checked = true;
+    // Helpers for driving the page from a script (synthetic pointer events, card lookup).
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const pointer = (type, target, x, y, extra = {}) =>
+      target.dispatchEvent(new PointerEvent(type, { bubbles: true, composed: true, cancelable: true, pointerId: 7, pointerType: "touch", isPrimary: true, clientX: x, clientY: y, button: 0, buttons: type === "pointerup" ? 0 : 1, ...extra }));
+    const card = (key) => [...panel.shadowRoot.querySelectorAll(".card")].find((c) => c.getAttribute("aria-label").startsWith(`${key} `));
+    const center = (el) => {
+      const r = el.getBoundingClientRect();
+      return [r.left + r.width / 2, r.top + r.height / 2];
+    };
+    window.harness = { panel, cards: cards.map((c) => c.element), push, sleep, pointer, card, center };
+    Object.assign(window, { sleep, pev: pointer, cardEl: card, center });
+  </script>
+</body>
+</html>
