@@ -366,7 +366,8 @@ export const overlayCss = `
 .dialog-footer { display: flex; justify-content: flex-end; gap: 8px; flex: none; padding: 10px 20px; border-top: 1px solid var(--hb-line); }
 .dialog-message { margin: 0; line-height: 1.5; }
 .issue-ref { display: inline-flex; align-items: center; gap: 8px; }
-.project-name { font-size: 13px; }
+.project-name { min-width: 0; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.mobile-only { display: none; }
 
 .issue-layout { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 20px; }
 .issue-main, .issue-side, .issue-head, .issue-thread { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
@@ -495,5 +496,13 @@ export const overlayCss = `
   .status-row { grid-template-columns: auto 1fr auto; }
   .status-row .status-category, .status-row .status-wip, .status-row .status-backlog { grid-column: 2 / -1; }
   .dialog-body { padding: 14px 14px; }
+  /* Home Assistant draws under the notch and status bar (viewport-fit=cover), so a full-screen dialog
+     has to keep its header, and with it the close button, below them and its footer above the home bar. */
+  .dialog:not(.small) .dialog-header { min-height: calc(56px + env(safe-area-inset-top, 0px)); padding-top: calc(6px + env(safe-area-inset-top, 0px)); }
+  .dialog-header { padding-right: max(8px, env(safe-area-inset-right, 0px)); padding-left: max(14px, env(safe-area-inset-left, 0px)); }
+  .dialog-footer { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+  .dialog-footer.mobile-only { display: flex; }
+  .dialog-footer.mobile-only .btn { flex: 1 1 auto; min-height: 44px; }
+  .toasts { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
 }
 `;

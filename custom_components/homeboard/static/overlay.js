@@ -169,7 +169,13 @@ function trapTab(event) {
 }
 
 /** Standard dialog chrome: header with title + close, scrolling body, footer. */
-export function dialogShell({ title, icon, body, footer, onClose, headerLeft, headerRight }) {
+export function dialogShell({ title, icon, body, footer, onClose, headerLeft, headerRight, mobileClose = false }) {
+  // A dialog without a footer gets a big Close button at the bottom on phones, within thumb reach.
+  const bottom = footer
+    ? h("footer.dialog-footer", { key: "footer" }, footer)
+    : mobileClose
+      ? h("footer.dialog-footer.mobile-only", { key: "footer" }, h("button.btn", { type: "button", onclick: onClose }, t("close")))
+      : null;
   return [
     h(
       "header.dialog-header",
@@ -182,7 +188,7 @@ export function dialogShell({ title, icon, body, footer, onClose, headerLeft, he
       h("button.icon-btn", { "aria-label": t("close"), title: t("close"), onclick: onClose }, h("ha-icon", { icon: "mdi:close" })),
     ),
     h("div.dialog-body", { key: "body" }, body),
-    footer ? h("footer.dialog-footer", { key: "footer" }, footer) : null,
+    bottom,
   ];
 }
 

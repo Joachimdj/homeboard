@@ -4,6 +4,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions follo
 [Semantic Versioning](https://semver.org/); while the project is 0.x only the patch number is bumped
 for small changes.
 
+## [0.2.2] - 2026-11-23
+
+### Fixed
+- **No close button on phones**: Home Assistant draws under the notch and status bar, so the header of a
+  full-screen dialog (with the close button) ended up behind them on iPhones. Dialog headers and footers now
+  respect the safe area, and the issue dialog has a big **Close** button at the bottom on phones. Long project
+  names no longer push the header buttons out of view.
+
 ## [0.2.1] - 2026-11-23
 
 Calmer smart-home health scanner, based on what the first real install showed (35 issues at once, most of

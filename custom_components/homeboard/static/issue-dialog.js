@@ -611,6 +611,7 @@ class IssueDialog {
       ],
       headerRight: h("button.icon-btn", { type: "button", "aria-label": t("actions"), title: t("actions"), "aria-haspopup": "menu", onclick: (event) => this.openMenu(event) }, icon("mdi:dots-horizontal")),
       onClose: () => this.close(),
+      mobileClose: true,
       body,
     });
   }
