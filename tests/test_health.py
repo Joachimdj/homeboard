@@ -31,7 +31,7 @@ def source(hass):
     return entry
 
 
-def make_device(hass, source, name, entities, area=None):
+def make_device(hass, source, name, entities, area=None, platform="fake"):
     """entities: [(domain, key, state, extra)] -> device id."""
     devices = dr.async_get(hass)
     entities_reg = er.async_get(hass)
@@ -47,7 +47,7 @@ def make_device(hass, source, name, entities, area=None):
         attrs = extra.pop("attrs", {})
         entry = entities_reg.async_get_or_create(
             domain,
-            "fake",
+            platform,
             f"{name}-{key}",
             device_id=device.id,
             config_entry=source,
@@ -253,6 +253,266 @@ async def test_battery_without_device(hass, manager):
     )
     [finding] = await findings(manager)
     assert finding.summary == "Replace battery: Solo"
+
+
+# ------------------------------------------------------------------ 0.2.1: less noise
+
+
+def _battery(level="12", **extra):
+    return ("sensor", "battery", level, {"attrs": {"device_class": "battery"}, **extra})
+
+
+async def test_ordinary_batteries_share_one_issue_security_ones_do_not(hass, manager, source):
+    make_device(
+        hass,
+        source,
+        "Smoke alarm",
+        [_battery("9"), ("binary_sensor", "smoke", "off", {"original_device_class": "smoke"})],
+    )
+    for name, level in (("Kitchen switch", "15"), ("Palm", "4"), ("Office remote", "18")):
+        make_device(
+            hass,
+            source,
+            name,
+            [_battery(level)],
+            area="Office" if name == "Office remote" else None,
+        )
+    found = {f.key: f for f in await findings(manager)}
+    group = found[health.BATTERY_GROUP_KEY]
+    assert group.summary == "3 batteries are running low" and group.priority == "medium"
+    assert group.labels == ["auto", "battery"] and group.type == "task"
+    # lowest first, with the area when there is one
+    assert [line.lstrip("- ") for line in group.description.splitlines()[:3]] == [
+        "Palm: 4 %",
+        "Kitchen switch: 15 %",
+        "Office remote (Office): 18 %",
+    ]
+    [smoke] = [f for k, f in found.items() if k != health.BATTERY_GROUP_KEY]
+    assert smoke.summary == "Replace battery: Smoke alarm" and smoke.priority == "high"
+    assert "security" in smoke.labels and len(found) == 2
+
+
+async def test_battery_group_title_follows_the_count_and_keeps_its_hysteresis(
+    hass, manager, source, freezer
+):
+    make_device(hass, source, "Palm", [_battery("12")])
+    mon = monitor(manager)
+    await mon.async_scan(force=True)
+    [issue] = [i for i in manager.issues.values() if i["source"] == "health"]
+    assert issue["summary"] == "Replace battery: Palm"
+    make_device(hass, source, "Ficus", [_battery("8")])
+    await mon.async_scan(force=True)
+    assert (
+        issue["summary"] == "2 batteries are running low" and "Ficus: 8 %" in issue["description"]
+    )
+    # a battery at 22 % stays listed once it is in the group (threshold 20 + 5), 26 % leaves it
+    hass.states.async_set("sensor.palm_battery", "22", {"device_class": "battery"})
+    await mon.async_scan(force=True)
+    assert "Palm" in issue["description"]
+    hass.states.async_set("sensor.palm_battery", "26", {"device_class": "battery"})
+    await mon.async_scan(force=True)
+    assert issue["summary"] == "Replace battery: Ficus" and "Palm" not in issue["description"]
+    assert len([i for i in manager.issues.values() if i["source"] == "health"]) == 1
+
+
+async def test_rechargeable_devices_are_not_a_battery_replacement(hass, manager, source):
+    make_device(hass, source, "Mower", [_battery("5"), ("lawn_mower", "m", "docked", {})])
+    make_device(hass, source, "Vac", [_battery("5"), ("vacuum", "v", "docked", {})])
+    make_device(
+        hass,
+        source,
+        "Tablet",
+        [_battery("5")],
+        platform="mobile_app",
+    )
+    make_device(
+        hass,
+        source,
+        "Scooter",
+        [
+            _battery("5"),
+            ("binary_sensor", "chg", "off", {"attrs": {"device_class": "battery_charging"}}),
+        ],
+    )
+    assert await findings(manager) == []
+    got = await findings(manager, health_noisy_devices=True)
+    assert [f.summary for f in got] == ["4 batteries are running low"]
+
+
+async def test_normally_off_devices_are_not_reported_offline(hass, manager, source, freezer):
+    freezer.move_to(OLD)
+    make_device(
+        hass,
+        source,
+        "Telly",
+        [("media_player", "tv", "unavailable", {}), ("remote", "r", "unavailable", {})],
+    )
+    make_device(hass, source, "Bulb", [("light", "l", "unavailable", {})])
+    make_device(
+        hass, source, "Browser", [("camera", "c", "unavailable", {})], platform="browser_mod"
+    )
+    make_device(hass, source, "Plug", [("switch", "s", "unavailable", {})])
+    make_device(
+        hass,
+        source,
+        "Lamp and fan",
+        [("light", "l", "unavailable", {}), ("fan", "f", "unavailable", {})],
+    )
+    freezer.move_to(NOW)
+    got = await findings(manager)
+    assert sorted(f.summary for f in got) == ["Lamp and fan is offline", "Plug is offline"]
+    everything = await findings(manager, health_noisy_devices=True)
+    assert [f.summary for f in everything] == ["Fake Hub: 5 devices are offline"]
+
+
+async def test_offline_group_title_follows_the_count(hass, manager, source, freezer):
+    freezer.move_to(OLD)
+    for name in ("Cam 1", "Cam 2", "Cam 3"):
+        make_device(hass, source, name, [("camera", "stream", "unavailable", {})])
+    freezer.move_to(NOW)
+    mon = monitor(manager)
+    await mon.async_scan(force=True)
+    [issue] = [i for i in manager.issues.values() if i["source"] == "health"]
+    assert issue["summary"] == "Fake Hub: 3 devices are offline"
+    freezer.move_to(OLD)
+    make_device(hass, source, "Cam 4", [("camera", "stream", "unavailable", {})])
+    freezer.move_to(NOW)
+    await mon.async_scan(force=True)
+    assert issue["summary"] == "Fake Hub: 4 devices are offline" and "Cam 4" in issue["description"]
+
+
+def test_default_cap_is_lower_than_before():
+    assert const.DEFAULT_HEALTH_MAX_OPEN == 15
+
+
+# ------------------------------------------------------------------ 0.2.1: first-scan review
+
+
+def _health_issues(manager):
+    return [i for i in manager.issues.values() if i["source"] == "health"]
+
+
+async def test_first_scan_only_creates_one_review_issue(hass, fresh_manager, source, freezer):
+    manager = fresh_manager
+    await broken_device(hass, source, freezer, "Gate")
+    await broken_device(hass, source, freezer, "Barn")
+    mon = monitor(manager)
+    first = await mon.async_scan()
+    assert first["skipped"] == "awaiting_review" and first["created"] == 0
+    assert {f["action"] for f in first["findings"]} == {"held"}
+    [review] = _health_issues(manager)
+    assert review["dedupe_key"] == const.HEALTH_REVIEW_KEY
+    assert review["summary"] == "Review: Homeboard found 2 things to fix"
+    assert review["labels"] == ["auto", "review"]
+    assert (
+        "Gate is offline" in review["description"] and "close this issue" in review["description"]
+    )
+    assert not manager.health_state.get("reviewed") and mon.awaiting_review
+    assert hass.states.get("sensor.homeboard_auto_generated_issues").attributes["awaiting_review"]
+
+    # nothing piles up while it waits, and the list refreshes when the findings change
+    again = await mon.async_scan()
+    assert again["skipped"] == "awaiting_review" and len(_health_issues(manager)) == 1
+    await broken_device(hass, source, freezer, "Shed")
+    await mon.async_scan()
+    # three devices of one integration become a single finding
+    assert review["summary"] == "Review: Homeboard found 1 thing to fix"
+    assert "Fake Hub: 3 devices are offline" in review["description"]
+    updated = review["updated"]
+    await mon.async_scan()
+    assert review["updated"] == updated  # unchanged list, nothing written
+
+
+async def test_closing_the_review_lets_the_scanner_go_ahead(hass, fresh_manager, source, freezer):
+    manager = fresh_manager
+    await broken_device(hass, source, freezer, "Gate")
+    mon = monitor(manager)
+    await mon.async_scan()
+    [review] = _health_issues(manager)
+    manager.move_issue(review["id"], "Done", actor="person.joachim", source="ui")
+    result = await mon.async_scan()
+    assert result["created"] == 1 and "skipped" not in result
+    assert manager.health_state["reviewed"] and not mon.awaiting_review
+    assert manager.health_state.get("review_issue") is None
+    gate = next(i for i in _health_issues(manager) if i["dedupe_key"].startswith("health:"))
+    assert gate["summary"] == "Gate is offline"
+    assert manager._as_dict()["health"]["reviewed"] is True  # it is persisted
+
+
+async def test_deleting_the_review_counts_as_a_yes(hass, fresh_manager, source, freezer):
+    manager = fresh_manager
+    await broken_device(hass, source, freezer, "Gate")
+    mon = monitor(manager)
+    await mon.async_scan()
+    [review] = _health_issues(manager)
+    manager.delete_issue(review["id"])
+    assert (await mon.async_scan())["created"] == 1 and manager.health_state["reviewed"]
+
+
+async def test_a_manual_scan_goes_ahead_and_closes_the_review(hass, fresh_manager, source, freezer):
+    manager = fresh_manager
+    await broken_device(hass, source, freezer, "Gate")
+    mon = monitor(manager)
+    await mon.async_scan()
+    [review] = _health_issues(manager)
+    manual = await mon.async_scan(force=True)
+    assert manual["created"] == 1 and manager.category(review) == "done"
+    assert review["auto_resolved"] and "manual scan" in review["comments"][-1]["text"]
+
+
+async def test_dry_run_does_not_touch_the_review(hass, fresh_manager, source, freezer):
+    manager = fresh_manager
+    await broken_device(hass, source, freezer, "Gate")
+    dry = await manager.health.async_scan(dry_run=True)
+    assert dry["findings"][0]["action"] == "would_create" and manager.issues == {}
+    assert not manager.health_state
+
+
+async def test_nothing_found_or_older_install_needs_no_review(hass, fresh_manager, source, freezer):
+    manager = fresh_manager
+    mon = monitor(manager)
+    assert (await mon.async_scan())["created"] == 0 and manager.health_state["reviewed"]
+    assert _health_issues(manager) == []
+
+    # a board that already has auto issues (installed before 0.2.1) is not held back
+    manager.health_state.clear()
+    manager.create_issue("HOME", "old one", dedupe_key="health:offline:x", source="health")
+    await broken_device(hass, source, freezer, "Gate")
+    result = await mon.async_scan()
+    assert "skipped" not in result and manager.health_state["reviewed"]
+
+
+async def test_upgrade_from_0_2_0_swaps_per_device_battery_issues_for_the_group(
+    hass, fresh_manager, source, freezer
+):
+    """The board of a 0.2.0 install: many per-device battery issues, no review wanted."""
+    manager = fresh_manager
+    monitor(manager)._project(create=True)  # the FIX project of the old install
+    for name in ("Kitchen switch", "Palm", "Office remote"):
+        device_id = make_device(hass, source, name, [_battery("10")])
+        manager.create_issue(
+            "FIX",
+            f"Replace battery: {name}",
+            dedupe_key=f"health:battery:{device_id}",
+            source="health",
+            labels=["auto", "battery"],
+        )
+    mon = monitor(manager)
+    first = await mon.async_scan()
+    assert first["created"] == 0 and first["closed"] == 0 and manager.health_state["reviewed"]
+    second = await mon.async_scan()
+    assert second["created"] == 1 and second["closed"] == 3
+    open_now = [i for i in _health_issues(manager) if manager.category(i) != "done"]
+    assert [i["summary"] for i in open_now] == ["3 batteries are running low"]
+    assert all(i["auto_resolved"] for i in _health_issues(manager) if manager.category(i) == "done")
+
+
+async def test_review_without_its_project_waits_quietly(hass, fresh_manager, source, freezer):
+    manager = fresh_manager
+    await broken_device(hass, source, freezer, "Gate")
+    manager.options = {"health_project": "NOPE"}
+    result = await monitor(manager).async_scan()
+    assert result["skipped"] == "awaiting_review" and _health_issues(manager) == []
 
 
 # ------------------------------------------------------------------ integrations / repairs / updates

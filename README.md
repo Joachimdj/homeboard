@@ -333,8 +333,8 @@ home fixes", created on demand) up to date:
 
 | Detector | Creates an issue when | Priority |
 |----------|----------------------|----------|
-| Offline devices | all main entities of a device have been unavailable for 60 minutes (3 or more devices of one integration are merged into one issue) | high for security devices, else medium |
-| Low batteries | a battery sensor is below 20 % (or a binary battery sensor is on), one issue per device | high for security devices, else medium |
+| Offline devices | all main entities of a device have been unavailable for 60 minutes (3 or more devices of one integration are merged into one issue). TVs, speakers, light bulbs and browsers / phones are skipped, they are off on purpose | high for security devices, else medium |
+| Low batteries | a battery sensor is below 20 % (or a binary battery sensor is on). Security devices (smoke, doors, motion, ...) get an issue each; every other battery goes into **one** issue ("5 batteries are running low") listed lowest first. Robot mowers, vacuums and phones are skipped, they are recharged | high for security devices, else medium |
 | Integration problems | a config entry fails to load or keeps retrying, or waits for a new sign-in | medium, sign-in high |
 | Repairs | a Home Assistant repair is open | by severity |
 | Updates (off by default) | one grouped issue listing pending updates | low |
@@ -345,7 +345,10 @@ Rules that keep it calm:
   ghosts.
 - Waits 10 minutes after Home Assistant starts, and a problem must be seen on two scans in a row
   before an issue appears and be gone for two scans before it is closed.
-- At most 30 open auto issues (highest priority first).
+- **The very first scan creates nothing but one "Review" issue** that lists what it found. Close that issue to let
+  Homeboard create the real ones (or run `scan_health`, which goes ahead right away). That way a fresh
+  install never floods your board with months of old faults.
+- At most 15 open auto issues (highest priority first; change it in the options).
 - Issues close themselves ("Resolved automatically") and reopen with "Problem is back" if the fault
   returns.
 - **Close an auto issue by hand and it is snoozed for 7 days.** Add the label `ignore` to stop that
@@ -353,9 +356,10 @@ Rules that keep it calm:
 - Security devices (doors, windows, motion, smoke, gas, water, locks, cameras, alarm panels) get the
   label `security` and priority high.
 
-Try it first: call **homeboard.scan_health** with `dry_run: true` (Developer tools > Actions); it lists
+Try it any time: call **homeboard.scan_health** with `dry_run: true` (Developer tools > Actions); it lists
 what would be created without changing anything. A manual scan (without dry run) acts immediately.
-Switch the whole thing off, or exclude entities and integrations, in **Configure > Smart home health**.
+Switch the whole thing off, exclude entities and integrations, or also report the normally-off devices
+(TVs, bulbs, phones, robot mowers) in **Configure > Smart home health**.
 
 ## Entities
 

@@ -287,7 +287,7 @@ async def test_noisy_faults_lead_to_an_ignore_suggestion(hass, manager, broken, 
     freezer.move_to("2026-12-01 08:00:00+01:00")
     from .test_health import make_device
 
-    make_device(hass, broken, "Hallway lamp", [("light", "main", "unavailable", {})])
+    make_device(hass, broken, "Hallway lamp", [("switch", "main", "unavailable", {})])
     freezer.move_to("2026-12-01 12:00:00+01:00")
     monitor = manager.health
     monitor.grace_until = dt_util.utcnow() - timedelta(minutes=1)
@@ -300,7 +300,7 @@ async def test_noisy_faults_lead_to_an_ignore_suggestion(hass, manager, broken, 
         )
         manager.move_issue(issue["id"], "Done", actor="person.joachim", source="ui")
         freezer.tick(timedelta(days=8))
-        hass.states.async_set("light.hallway_lamp_main", "unavailable")
+        hass.states.async_set("switch.hallway_lamp_main", "unavailable")
     await monitor.async_scan(force=True)  # notices the third closure and reopens
     manager.learning.refresh()
     suggestions = [

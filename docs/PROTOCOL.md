@@ -90,27 +90,38 @@ Homeboard scans the smart home every 5 minutes and creates, updates and closes i
 (`source = "health"`, label `auto`, type `bug` for broken things and `task` for chores such as
 batteries). Detectors (each switchable in the options): **offline devices** (all primary entities
 of a device `unavailable` for longer than N minutes, grouped per device, or one issue per
-integration when 3 or more of its devices are offline), **low batteries** (< threshold, grouped
-per device), **repairs** (open Home Assistant repair issues), **integration problems** (config
+integration when 3 or more of its devices are offline; media players, remotes, light-only devices and
+browser / phone integrations are skipped unless `health_noisy_devices` is on), **low batteries** (< threshold;
+security devices get one issue each with key `health:battery:<device_id>`, every other device goes into ONE
+grouped issue `health:battery_group` whose title follows the count; devices with a lawn mower / vacuum entity,
+a `battery_charging` sensor or a phone / browser platform are skipped unless `health_noisy_devices` is on), **repairs** (open Home Assistant repair issues), **integration problems** (config
 entry in setup error / retry / migration error, or waiting for re-authentication), **updates
 available** (one grouped issue, off by default).
 
 Rules that keep it from flooding the board: ignores disabled / hidden / diagnostic-only entities
 and registry ghosts (`restored`); 10 minute grace after Home Assistant starts; a problem must be
 seen in two consecutive scans before an issue is created and absent for two scans before it is
-closed ("Resolved automatically" comment, `auto_resolved = true`); at most `health_max_open` (30)
+closed ("Resolved automatically" comment, `auto_resolved = true`); at most `health_max_open` (15)
 open auto issues, highest priority first; device findings are replaced by the integration finding
 when the whole integration is down. Security devices (doors, windows, motion, smoke, gas, water,
 tamper, locks, cameras, alarm panels) get priority `high` and label `security`.
 
 `dedupe_key` is `health:<detector>:<id>` (`health:offline:<device_id>`, `health:battery:<device_id>`,
 `health:repair:<domain>:<issue_id>`, `health:entry:<entry_id>`, `health:reauth:<entry_id>`,
-`health:updates`). Closing an auto issue by hand while the fault persists **snoozes** it for
+`health:updates`, `health:battery_group`). Grouped findings (offline per integration, battery group) rewrite
+their title as well as their description when the affected set changes. Closing an auto issue by hand while the fault persists **snoozes** it for
 `health_snooze_days` (7); after that it is reopened with a "Problem is back" comment. The label
 `ignore` on an auto issue suppresses that fault for good. Auto issues go to the project chosen in the
 options (default: key `FIX`, "Smart home fixes", created on demand) and to the optional default
 assignee. The scan can be run by hand with the `scan_health` service / `homeboard/health/scan`
 (`dry_run` lists what it would do without writing anything).
+
+**First-scan review.** Until a person has looked at the first scan, the scanner (automatic scans only) creates
+ONE issue (`dedupe_key` `review:health`, labels `auto`, `review`, `source` `health`) that lists the findings and
+keeps its list current; scan results carry `skipped: "awaiting_review"` and every finding the action `held`.
+Closing or deleting that issue, or a manual non-dry `scan_health`, sets `reviewed` (persisted in the store under
+`health`) and the scanner goes ahead. A board that already has health issues, or a first scan with nothing to
+find, counts as reviewed. `sensor.homeboard_auto_generated_issues` has the attribute `awaiting_review`.
 
 ## 4. Frontend payload (WS push / `homeboard/get`)
 

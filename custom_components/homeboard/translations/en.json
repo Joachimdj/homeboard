@@ -93,7 +93,7 @@
       },
       "health": {
         "title": "Homeboard: smart home health",
-        "description": "Homeboard creates issues by itself for things that need fixing and closes them when the fault is gone. Use the scan_health service with dry run to see what it would do before you switch it on.",
+        "description": "Homeboard creates issues by itself for things that need fixing and closes them when the fault is gone. The very first scan only creates one issue that lists what it found; close that issue to let it go ahead. Low batteries of ordinary devices are collected in one issue. Use the scan_health service with dry run to see what it would do.",
         "data": {
           "health_enabled": "Create issues automatically",
           "health_unavailable": "Offline devices",
@@ -101,6 +101,7 @@
           "health_integrations": "Integration problems and re-authentication",
           "health_repairs": "Home Assistant repairs",
           "health_updates": "Available updates (one grouped issue)",
+          "health_noisy_devices": "Also report TVs, speakers, light bulbs, robot mowers and phones",
           "health_unavailable_minutes": "Offline for at least (minutes)",
           "health_battery_threshold": "Battery warning below (%)",
           "health_project": "Project key for auto issues (empty = FIX, created on demand)",

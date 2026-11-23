@@ -109,6 +109,7 @@ def _health_attrs(
         if last and "created" in last
         else None,
         "enabled": bool(manager.health and manager.health.enabled),
+        "awaiting_review": bool(manager.health and manager.health.awaiting_review),
     }
 
 

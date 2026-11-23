@@ -106,17 +106,22 @@ CONF_HEALTH_SNOOZE_DAYS: Final = "health_snooze_days"
 CONF_HEALTH_MAX_OPEN: Final = "health_max_open"
 CONF_HEALTH_EXCLUDE_ENTITIES: Final = "health_exclude_entities"
 CONF_HEALTH_EXCLUDE_INTEGRATIONS: Final = "health_exclude_integrations"
+CONF_HEALTH_NOISY_DEVICES: Final = "health_noisy_devices"
 
 DEFAULT_HEALTH_UNAVAILABLE_MINUTES: Final = 60
 DEFAULT_HEALTH_BATTERY_THRESHOLD: Final = 20
 DEFAULT_HEALTH_SNOOZE_DAYS: Final = 7
-DEFAULT_HEALTH_MAX_OPEN: Final = 30
+DEFAULT_HEALTH_MAX_OPEN: Final = 15
 HEALTH_PROJECT_KEY: Final = "FIX"
 HEALTH_PROJECT_NAME: Final = "Smart home fixes"
 HEALTH_STARTUP_GRACE_MINUTES: Final = 10
 HEALTH_DEBOUNCE_SCANS: Final = 2
 HEALTH_REOPEN_COOLDOWN_MINUTES: Final = 30
 HEALTH_IGNORE_LABEL: Final = "ignore"
+# Browsers and phones come and go and charge themselves: not faults, unless the owner asks for them.
+HEALTH_EPHEMERAL_PLATFORMS: Final = frozenset({"browser_mod", "mobile_app", "ios"})
+# Dedupe key of the one issue that holds back the very first scan until a person has looked at it.
+HEALTH_REVIEW_KEY: Final = "review:health"
 # Helper-like platforms: an unavailable one is not a device that needs fixing.
 HEALTH_IGNORED_PLATFORMS: Final = frozenset(
     {

@@ -42,6 +42,7 @@ from .const import (
     CONF_HEALTH_EXCLUDE_INTEGRATIONS,
     CONF_HEALTH_INTEGRATIONS,
     CONF_HEALTH_MAX_OPEN,
+    CONF_HEALTH_NOISY_DEVICES,
     CONF_HEALTH_PROJECT,
     CONF_HEALTH_REPAIRS,
     CONF_HEALTH_SNOOZE_DAYS,
@@ -328,6 +329,7 @@ class HomeboardOptionsFlow(OptionsFlowWithReload):
                 vol.Optional(CONF_HEALTH_INTEGRATIONS, default=True): BooleanSelector(),
                 vol.Optional(CONF_HEALTH_REPAIRS, default=True): BooleanSelector(),
                 vol.Optional(CONF_HEALTH_UPDATES, default=False): BooleanSelector(),
+                vol.Optional(CONF_HEALTH_NOISY_DEVICES, default=False): BooleanSelector(),
                 vol.Optional(
                     CONF_HEALTH_UNAVAILABLE_MINUTES, default=DEFAULT_HEALTH_UNAVAILABLE_MINUTES
                 ): _number(5, 1440),

@@ -577,7 +577,7 @@ strings = {
             },
             "health": {
                 "title": "Homeboard: smart home health",
-                "description": "Homeboard creates issues by itself for things that need fixing and closes them when the fault is gone. Use the scan_health service with dry run to see what it would do before you switch it on.",
+                "description": "Homeboard creates issues by itself for things that need fixing and closes them when the fault is gone. The very first scan only creates one issue that lists what it found; close that issue to let it go ahead. Low batteries of ordinary devices are collected in one issue. Use the scan_health service with dry run to see what it would do.",
                 "data": {
                     "health_enabled": "Create issues automatically",
                     "health_unavailable": "Offline devices",
@@ -585,6 +585,7 @@ strings = {
                     "health_integrations": "Integration problems and re-authentication",
                     "health_repairs": "Home Assistant repairs",
                     "health_updates": "Available updates (one grouped issue)",
+                    "health_noisy_devices": "Also report TVs, speakers, light bulbs, robot mowers and phones",
                     "health_unavailable_minutes": "Offline for at least (minutes)",
                     "health_battery_threshold": "Battery warning below (%)",
                     "health_project": "Project key for auto issues (empty = FIX, created on demand)",
@@ -926,7 +927,7 @@ da["options"]["step"] = {
     },
     "health": {
         "title": "Homeboard: smart home-sundhed",
-        "description": "Homeboard opretter selv opgaver for ting der skal ordnes og lukker dem igen når fejlen er væk. Kør tjenesten scan_health med tørløb for at se hvad den ville gøre, før du slår det til.",
+        "description": "Homeboard opretter selv opgaver for ting der skal ordnes og lukker dem igen når fejlen er væk. Den allerførste scanning opretter kun én opgave med en liste over det fundne; luk den opgave for at lade den fortsætte. Svage batterier i almindelige enheder samles i én opgave. Kør tjenesten scan_health med tørløb for at se hvad den ville gøre.",
         "data": {
             "health_enabled": "Opret opgaver automatisk",
             "health_unavailable": "Offline enheder",
@@ -934,6 +935,7 @@ da["options"]["step"] = {
             "health_integrations": "Integrationsproblemer og ny login",
             "health_repairs": "Home Assistant-reparationer",
             "health_updates": "Tilgængelige opdateringer (én samlet opgave)",
+            "health_noisy_devices": "Rapportér også tv, højttalere, pærer, plæneklippere og telefoner",
             "health_unavailable_minutes": "Offline i mindst (minutter)",
             "health_battery_threshold": "Batteriadvarsel under (%)",
             "health_project": "Projektnøgle til automatiske opgaver (tom = FIX, oprettes ved behov)",

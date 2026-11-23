@@ -286,6 +286,7 @@ async def test_options_files_learning_and_health_sections(hass, entry):
             "health_integrations": True,
             "health_repairs": True,
             "health_updates": False,
+            "health_noisy_devices": True,
             "health_unavailable_minutes": 30.0,
             "health_battery_threshold": 15.0,
             "health_snooze_days": 3.0,
@@ -294,5 +295,6 @@ async def test_options_files_learning_and_health_sections(hass, entry):
     )
     await hass.async_block_till_done()
     assert entry.options["health_enabled"] is False and "health_project" not in entry.options
+    assert entry.options["health_noisy_devices"] is True
     assert entry.runtime_data.health.enabled is False
     assert entry.options["max_upload_mb"] == 5  # earlier sections survive

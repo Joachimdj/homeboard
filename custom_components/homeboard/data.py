@@ -136,6 +136,8 @@ class HomeboardData(ChecklistMixin):
         """The ``PushNotifier`` (per-person pushes and digest)."""
         self.learning_data: dict[str, Any] = {}
         """Persisted private state of the learning engine."""
+        self.health_state: dict[str, Any] = {}
+        """Persisted state of the health scanner (first-scan review)."""
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -146,6 +148,7 @@ class HomeboardData(ChecklistMixin):
         self.issues = raw.get("issues", {})
         self.recurring = raw.get("recurring", {})
         self.learning_data = raw.get("learning", {})
+        self.health_state = raw.get("health", {})
         for issue in self.issues.values():  # documents written before 0.2
             issue.setdefault("checklist", [])
             issue.setdefault("attachments", [])
@@ -156,6 +159,7 @@ class HomeboardData(ChecklistMixin):
             "issues": self.issues,
             "recurring": self.recurring,
             "learning": self.learning_data,
+            "health": self.health_state,
         }
 
     async def async_save_now(self) -> None:
@@ -353,6 +357,10 @@ class HomeboardData(ChecklistMixin):
         for name, data in events or []:
             self.hass.bus.async_fire(name, data)
         self._signal()
+
+    def save_health_state(self) -> None:
+        """Persist ``health_state`` and refresh the entities that show it."""
+        self._commit()
 
     def _signal(self) -> None:
         """Invalidate caches and tell entities / subscribers to refresh."""

@@ -69,7 +69,19 @@ async def setup(hass, entry: MockConfigEntry) -> None:
 
 @pytest.fixture
 async def manager(hass, entry):
-    """A running Homeboard with the HOME project and persons joachim / padmaja."""
+    """A running Homeboard with the HOME project and persons joachim / padmaja.
+
+    The first-scan review of the health scanner is already done here (it is covered in
+    test_health.py with ``fresh_manager``), so the scanner tests can create issues directly.
+    """
+    await setup(hass, entry)
+    entry.runtime_data.health_state["reviewed"] = True
+    return entry.runtime_data
+
+
+@pytest.fixture
+async def fresh_manager(hass, entry):
+    """A running Homeboard whose health scanner has never run."""
     await setup(hass, entry)
     return entry.runtime_data
 

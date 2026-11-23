@@ -45,6 +45,7 @@ from .const import (
     CONF_HEALTH_EXCLUDE_INTEGRATIONS,
     CONF_HEALTH_INTEGRATIONS,
     CONF_HEALTH_MAX_OPEN,
+    CONF_HEALTH_NOISY_DEVICES,
     CONF_HEALTH_PROJECT,
     CONF_HEALTH_REPAIRS,
     CONF_HEALTH_SNOOZE_DAYS,
@@ -57,11 +58,13 @@ from .const import (
     DEFAULT_HEALTH_UNAVAILABLE_MINUTES,
     DOMAIN,
     HEALTH_DEBOUNCE_SCANS,
+    HEALTH_EPHEMERAL_PLATFORMS,
     HEALTH_IGNORE_LABEL,
     HEALTH_IGNORED_PLATFORMS,
     HEALTH_PROJECT_KEY,
     HEALTH_PROJECT_NAME,
     HEALTH_REOPEN_COOLDOWN_MINUTES,
+    HEALTH_REVIEW_KEY,
     HEALTH_STARTUP_GRACE_MINUTES,
     PRIORITIES,
 )
@@ -74,8 +77,15 @@ _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(minutes=5)
 KEY_PREFIX = "health:"
 BATTERY_HYSTERESIS = 5
+BATTERY_GROUP_KEY = f"{KEY_PREFIX}battery_group"
 MIN_DEVICES_FOR_GROUPING = 3
 LISTED_ENTITIES = 10
+LISTED_IN_REVIEW = 40
+
+# Things that are off most of the time on purpose (televisions, speakers, bulbs on a wall
+# switch) or that charge themselves (robot mowers, vacuums, phones) are not "faults".
+NORMALLY_OFF_DOMAINS = frozenset({"media_player", "remote"})
+SELF_CHARGING_DOMAINS = frozenset({"lawn_mower", "vacuum"})
 
 SECURITY_CLASSES = frozenset(
     {
@@ -132,6 +142,8 @@ class Finding:
     type: str = "bug"
     fingerprint: tuple[str, ...] = ()
     """Identifies *what* is affected, so the description is only rewritten when that changes."""
+    refresh_summary: bool = False
+    """Grouped findings carry a count in the title, which follows the group."""
 
     def brief(self, action: str) -> dict[str, Any]:
         """Return the short form used in scan results."""
@@ -167,6 +179,10 @@ class _Context:
             for item in options.get(CONF_HEALTH_EXCLUDE_INTEGRATIONS) or []
             if str(item).strip()
         }
+        self.noisy = bool(options.get(CONF_HEALTH_NOISY_DEVICES, False))
+        """Also report devices that are normally off or charge themselves."""
+        self.battery_members: set[str] = set()
+        """Entities already in the open battery group (they get the hysteresis)."""
 
     def entry_excluded(self, entry: er.RegistryEntry) -> bool:
         """Return True if the entity is switched off, hidden, excluded or a helper."""
@@ -196,6 +212,35 @@ class _Context:
             return str(state.attributes["device_class"])
         return entry.device_class or entry.original_device_class
 
+    def is_normally_off(self, entries: Iterable[tuple[er.RegistryEntry, Any]]) -> bool:
+        """Return True for devices that are offline as a matter of course."""
+        if self.noisy:
+            return False
+        entries = list(entries)
+        domains = {entry.domain for entry, _ in entries}
+        return bool(
+            domains & NORMALLY_OFF_DOMAINS
+            or any(entry.platform in HEALTH_EPHEMERAL_PLATFORMS for entry, _ in entries)
+            or (domains and domains <= {"light"})
+        )
+
+    def is_self_charging(self, entries: Iterable[tuple[er.RegistryEntry, Any]]) -> bool:
+        """Return True for devices whose battery is recharged, not replaced."""
+        if self.noisy:
+            return False
+        for entry, state in entries:
+            if (
+                entry.domain in SELF_CHARGING_DOMAINS
+                or entry.platform in HEALTH_EPHEMERAL_PLATFORMS
+            ):
+                return True
+            if (
+                entry.domain == "binary_sensor"
+                and self.entity_class(entry, state) == "battery_charging"
+            ):
+                return True
+        return False
+
     def is_security(self, entries: Iterable[tuple[er.RegistryEntry, Any]]) -> bool:
         for entry, state in entries:
             if entry.domain in SECURITY_DOMAINS:
@@ -208,6 +253,17 @@ class _Context:
         return False
 
 
+def _all_devices(registry: dr.DeviceRegistry) -> list[dr.DeviceEntry]:
+    """Return every device. Newer Home Assistant iterates entries, older versions keys."""
+    devices = [item for item in registry.devices if isinstance(item, dr.DeviceEntry)]
+    return devices or list(registry.devices.values())
+
+
+def _config_entry_id(device: dr.DeviceEntry) -> str | None:
+    """Return the config entry of a device (renamed in newer Home Assistant versions)."""
+    return getattr(device, "config_entry_id", None) or device.primary_config_entry
+
+
 def _friendly(state: Any, entry: er.RegistryEntry) -> str:
     return (
         (state.name if state is not None else None)
@@ -217,8 +273,8 @@ def _friendly(state: Any, entry: er.RegistryEntry) -> str:
     )
 
 
-def _listing(lines: list[str]) -> str:
-    shown = lines[:LISTED_ENTITIES]
+def _listing(lines: list[str], limit: int = LISTED_ENTITIES) -> str:
+    shown = lines[:limit]
     extra = len(lines) - len(shown)
     text = "\n".join(f"- {line}" for line in shown)
     return text + (f"\n- ... and {extra} more" if extra > 0 else "")
@@ -241,7 +297,7 @@ def collect_offline(ctx: _Context, now: datetime, minutes: int) -> list[Finding]
     by_entry: dict[str, list[Finding]] = defaultdict(list)
     entry_of: dict[str, str] = {}
 
-    for device in ctx.devices.devices.values():
+    for device in _all_devices(ctx.devices):
         if device.disabled_by:
             continue
         pairs: list[tuple[er.RegistryEntry, Any]] = []
@@ -250,6 +306,8 @@ def collect_offline(ctx: _Context, now: datetime, minutes: int) -> list[Finding]
                 continue
             pairs.append((entry, ctx.hass.states.get(entry.entity_id)))
         if not pairs or any(state is None for _, state in pairs):
+            continue
+        if ctx.is_normally_off(pairs):
             continue
         if any(
             state.state != STATE_UNAVAILABLE or state.attributes.get("restored")
@@ -262,7 +320,7 @@ def collect_offline(ctx: _Context, now: datetime, minutes: int) -> list[Finding]
         name = ctx.device_name(device)
         security = ctx.is_security(pairs)
         lines = [f"{_friendly(state, entry)} (`{entry.entity_id}`)" for entry, state in pairs]
-        where = ctx.entry_title(device.primary_config_entry)
+        where = ctx.entry_title(_config_entry_id(device))
         area = ctx.area_name(device)
         facts = [f"Offline since {_local(since)}"]
         if where:
@@ -279,7 +337,7 @@ def collect_offline(ctx: _Context, now: datetime, minutes: int) -> list[Finding]
             fingerprint=tuple(sorted(entry.entity_id for entry, _ in pairs)),
         )
         findings.append(finding)
-        entry_id = device.primary_config_entry
+        entry_id = _config_entry_id(device)
         if entry_id:
             by_entry[entry_id].append(finding)
             entry_of[finding.key] = name
@@ -303,26 +361,34 @@ def collect_offline(ctx: _Context, now: datetime, minutes: int) -> list[Finding]
                 priority="high" if security else "medium",
                 labels=["auto", "offline"] + (["security"] if security else []),
                 fingerprint=tuple(sorted(i.key for i in items)),
+                refresh_summary=True,
             )
         )
     return [f for f in findings if f.key not in merged] + grouped
 
 
 def collect_battery(ctx: _Context, threshold: int) -> list[Finding]:
-    """Batteries below the threshold, grouped per device."""
-    by_device: dict[str | None, list[tuple[er.RegistryEntry, Any, str]]] = defaultdict(list)
+    """Batteries below the threshold.
+
+    Security devices (smoke, doors, motion, ...) get an issue of their own. Every other
+    battery goes into ONE grouped issue, so a house full of sensors does not flood the board.
+    """
+    by_device: dict[str, list[tuple[er.RegistryEntry, Any, str, float]]] = defaultdict(list)
     for state in ctx.hass.states.async_all(("sensor", "binary_sensor")):
         if state.attributes.get("device_class") != "battery" or state.attributes.get("restored"):
             continue
         entry = ctx.entities.async_get(state.entity_id)
         if entry is None or ctx.entry_excluded(entry):
             continue
-        device_key = f"{KEY_PREFIX}battery:{entry.device_id or entry.entity_id}"
-        limit = threshold + (BATTERY_HYSTERESIS if device_key in ctx.active_keys else 0)
+        ident = entry.device_id or entry.entity_id
+        held = f"{KEY_PREFIX}battery:{ident}" in ctx.active_keys or (
+            entry.entity_id in ctx.battery_members
+        )
+        limit = threshold + (BATTERY_HYSTERESIS if held else 0)
         if state.domain == "binary_sensor":
             if state.state != STATE_ON:
                 continue
-            label = "low"
+            label, level = "low", 0.0
         else:
             try:
                 level = float(state.state)
@@ -331,24 +397,56 @@ def collect_battery(ctx: _Context, threshold: int) -> list[Finding]:
             if level >= limit:
                 continue
             label = f"{level:g} %"
-        by_device[entry.device_id or entry.entity_id].append((entry, state, label))
+        by_device[ident].append((entry, state, label, level))
 
-    findings = []
+    findings: list[Finding] = []
+    grouped: list[tuple[str, str | None, list[tuple[er.RegistryEntry, Any, str, float]]]] = []
     for ident, items in by_device.items():
         device = ctx.devices.async_get(ident)
         name = ctx.device_name(device) if device else _friendly(items[0][1], items[0][0])
-        security = ctx.is_security(_device_pairs(ctx, device) or [(items[0][0], items[0][1])])
-        lines = [f"{_friendly(state, entry)}: {label}" for entry, state, label in items]
+        pairs = _device_pairs(ctx, device) or [(items[0][0], items[0][1])]
+        if ctx.is_self_charging(pairs):
+            continue
+        if not ctx.is_security(pairs):
+            grouped.append((name, ctx.area_name(device) if device else None, items))
+            continue
+        lines = [f"{_friendly(state, entry)}: {label}" for entry, state, label, _ in items]
         findings.append(
             Finding(
                 key=f"{KEY_PREFIX}battery:{ident}",
                 detector="battery",
                 summary=f"Replace battery: {name}",
                 description=_listing(lines) + FOOTER,
-                priority="high" if security else "medium",
-                labels=["auto", "battery"] + (["security"] if security else []),
+                priority="high",
+                labels=["auto", "battery", "security"],
                 type="task",
-                fingerprint=tuple(sorted(e.entity_id for e, _, _ in items)),
+                fingerprint=tuple(sorted(e.entity_id for e, _, _, _ in items)),
+            )
+        )
+    if grouped:
+        grouped.sort(key=lambda g: (min(level for *_, level in g[2]), g[0].lower()))
+        lines = []
+        for name, area, items in grouped:
+            labels = ", ".join(label for _, _, label, _ in items)
+            lines.append(f"{name}{f' ({area})' if area else ''}: {labels}")
+        count = len(grouped)
+        findings.append(
+            Finding(
+                key=BATTERY_GROUP_KEY,
+                detector="battery",
+                summary=(
+                    f"Replace battery: {grouped[0][0]}"
+                    if count == 1
+                    else f"{count} batteries are running low"
+                ),
+                description=_listing(lines, LISTED_IN_REVIEW) + FOOTER,
+                priority="medium",
+                labels=["auto", "battery"],
+                type="task",
+                fingerprint=tuple(
+                    sorted(e.entity_id for _, _, items in grouped for e, *_ in items)
+                ),
+                refresh_summary=True,
             )
         )
     return findings
@@ -551,6 +649,7 @@ class HealthMonitor:
         self._unsub_interval: CALLBACK_TYPE | None = None
         self._unsub_started: CALLBACK_TYPE | None = None
         self._fingerprints: dict[str, tuple[str, ...]] = {}
+        self._review_fingerprint: tuple[str, ...] = ()
         self.last_result: dict[str, Any] | None = None
 
     # -- lifecycle
@@ -603,6 +702,9 @@ class HealthMonitor:
             and self.manager.category(issue) != "done"
         }
         ctx = _Context(self.hass, options, active)
+        for issue in self.manager.issues.values():
+            if issue.get("dedupe_key") == BATTERY_GROUP_KEY and issue["id"] in self._fingerprints:
+                ctx.battery_members.update(self._fingerprints[issue["id"]])
         now = dt_util.utcnow()
         findings: list[Finding] = []
         if _bool_option(options, CONF_HEALTH_UNAVAILABLE, True):
@@ -691,7 +793,6 @@ class HealthMonitor:
 
         findings = await self.async_collect()
         keys = {f.key for f in findings}
-        project = self._project(create=not dry_run)
 
         def add(finding: Finding, action: str) -> None:
             result["findings"].append(finding.brief(action))
@@ -702,7 +803,10 @@ class HealthMonitor:
                 self._absent.pop(key, None)
             for key in [k for k in self._seen if k not in keys]:
                 del self._seen[key]
+            if not self.reviewed and self._hold_for_review(findings, force, result):
+                return result
 
+        project = self._project(create=not dry_run)
         if project is None:
             for finding in findings:
                 add(finding, "would_create" if dry_run else "no_project")
@@ -744,9 +848,10 @@ class HealthMonitor:
                     and existing["description"] != finding.description
                     and (self._fingerprint(existing) != finding.fingerprint)
                 ):
-                    self.manager.update_issue(
-                        existing["id"], source="health", description=finding.description
-                    )
+                    fields = {"description": finding.description}
+                    if finding.refresh_summary:
+                        fields["summary"] = finding.summary
+                    self.manager.update_issue(existing["id"], source="health", **fields)
                 self._remember_fingerprint(existing, finding, dry_run)
                 continue
 
@@ -842,6 +947,101 @@ class HealthMonitor:
                     }
                 )
         return result
+
+    # -- first-scan review
+
+    @property
+    def reviewed(self) -> bool:
+        """Return True once a person has looked at the very first scan."""
+        return bool(self.manager.health_state.get("reviewed"))
+
+    @property
+    def awaiting_review(self) -> bool:
+        """Return True while the first scan waits for a person to look at it."""
+        return not self.reviewed and bool(self.manager.health_state.get("review_issue"))
+
+    def _mark_reviewed(self) -> None:
+        state = self.manager.health_state
+        state["reviewed"] = True
+        state.pop("review_issue", None)
+        self.manager.save_health_state()
+
+    def _hold_for_review(
+        self, findings: list[Finding], force: bool, result: dict[str, Any]
+    ) -> bool:
+        """Keep the first scan from flooding a board nobody has looked at yet.
+
+        A fresh install finds whatever has been broken for months, all at once. Instead of
+        creating dozens of issues, Homeboard creates ONE issue listing them. Closing that
+        issue (or running ``scan_health`` by hand) lets the scanner start creating issues.
+        Returns True while the scan has to wait.
+        """
+        manager = self.manager
+        state = manager.health_state
+        review = manager.issues.get(state.get("review_issue") or "")
+        if force:
+            if review is not None and manager.category(review) != "done":
+                manager.resolve_automatically(
+                    review["id"], "Reviewed: a manual scan went ahead and created the issues."
+                )
+            self._mark_reviewed()
+            return False
+        if not state.get("review_issue"):
+            already = any(i["source"] == "health" for i in manager.issues.values())
+            if already or not findings:  # an older install, or nothing to review
+                self._mark_reviewed()
+                return False
+        elif review is None or review["archived"] or manager.category(review) == "done":
+            self._mark_reviewed()  # a person closed or removed the review: go ahead
+            return False
+
+        for finding in findings:
+            result["findings"].append(finding.brief("held"))
+        result["skipped"] = "awaiting_review"
+        project = self._project(create=True)
+        if project is None:
+            return True
+        summary = f"Review: Homeboard found {len(findings)} thing{'s' if len(findings) != 1 else ''} to fix"
+        description = self._review_text(findings)
+        if review is None:
+            issue, _ = manager.create_issue(
+                project["id"],
+                summary,
+                type="task",
+                priority="medium",
+                assignee=self._opt(CONF_HEALTH_ASSIGNEE, None) or UNSET,
+                labels=["auto", "review"],
+                description=description,
+                dedupe_key=HEALTH_REVIEW_KEY,
+                source="health",
+            )
+            state["review_issue"] = issue["id"]
+            manager.save_health_state()
+            self._review_fingerprint = tuple(sorted(f.key for f in findings))
+        elif review["description"] != description and self._review_fingerprint != tuple(
+            sorted(f.key for f in findings)
+        ):
+            manager.update_issue(
+                review["id"], source="health", summary=summary, description=description
+            )
+            self._review_fingerprint = tuple(sorted(f.key for f in findings))
+        return True
+
+    def _review_text(self, findings: list[Finding]) -> str:
+        max_open = int(self._opt(CONF_HEALTH_MAX_OPEN, DEFAULT_HEALTH_MAX_OPEN))
+        lines = [f"**{f.priority}** {f.summary}" for f in findings]
+        return (
+            "Homeboard checked your smart home for the first time and found the things below. "
+            "Nothing has been created yet, so a fresh install does not flood the board.\n\n"
+            + _listing(lines, LISTED_IN_REVIEW)
+            + "\n\n**To go ahead**, close this issue: from then on Homeboard creates a separate "
+            f"issue for each fault, most important first, at most {max_open} open at a time.\n\n"
+            "**To tune first**, open the Homeboard options > Smart home health and exclude "
+            "entities or integrations, change the battery threshold or the offline time. "
+            "This list refreshes by itself.\n\n"
+            "You can also run the `homeboard.scan_health` service, which goes ahead right away "
+            "(use `dry_run: true` to only look)." + FOOTER
+        )
 
     # The fingerprint (which entities are affected) is kept in memory only: after a
     # restart the first scan simply refreshes a changed description once.

@@ -4,6 +4,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions follo
 [Semantic Versioning](https://semver.org/); while the project is 0.x only the patch number is bumped
 for small changes.
 
+## [0.2.1] - 2026-11-23
+
+Calmer smart-home health scanner, based on what the first real install showed (35 issues at once, most of
+them noise).
+
+### Changed
+- **Low batteries are grouped**: security devices (smoke, doors, motion, ...) still get an issue of their own,
+  every other battery goes into one issue ("5 batteries are running low", lowest first). The title follows the
+  count. Old per-device battery issues close themselves ("no longer detected") when the group takes over.
+- **Things that are off on purpose are skipped**: televisions, speakers and other media players, remotes,
+  light-only devices (bulbs on a wall switch), Browser Mod browsers and phones are no longer reported offline,
+  and robot mowers, vacuums, phones and anything with a charging sensor are no longer reported as "replace
+  battery". The new option "Also report TVs, speakers, light bulbs, robot mowers and phones" brings them back.
+- The default cap of open auto issues is **15** (was 30). A cap you saved yourself is kept.
+- The title of a grouped offline issue ("Hue: 3 devices are offline") now follows the count too.
+
+### Added
+- **First-scan review**: on a fresh install the scanner no longer creates dozens of issues at once. It creates
+  ONE "Review" issue listing what it found; closing it (or running `scan_health`) lets the scanner go ahead.
+  Boards that already have auto issues are not held back. New attribute `awaiting_review` on
+  `sensor.homeboard_auto_generated_issues`.
+
+### Fixed
+- No more deprecation warnings from Home Assistant 2026.10+ for the device registry (`devices` mapping and
+  `primary_config_entry`).
+
 ## [0.2.0] - 2026-11-23
 
 ### Added

@@ -93,7 +93,7 @@
       },
       "health": {
         "title": "Homeboard: smart home-sundhed",
-        "description": "Homeboard opretter selv opgaver for ting der skal ordnes og lukker dem igen når fejlen er væk. Kør tjenesten scan_health med tørløb for at se hvad den ville gøre, før du slår det til.",
+        "description": "Homeboard opretter selv opgaver for ting der skal ordnes og lukker dem igen når fejlen er væk. Den allerførste scanning opretter kun én opgave med en liste over det fundne; luk den opgave for at lade den fortsætte. Svage batterier i almindelige enheder samles i én opgave. Kør tjenesten scan_health med tørløb for at se hvad den ville gøre.",
         "data": {
           "health_enabled": "Opret opgaver automatisk",
           "health_unavailable": "Offline enheder",
@@ -101,6 +101,7 @@
           "health_integrations": "Integrationsproblemer og ny login",
           "health_repairs": "Home Assistant-reparationer",
           "health_updates": "Tilgængelige opdateringer (én samlet opgave)",
+          "health_noisy_devices": "Rapportér også tv, højttalere, pærer, plæneklippere og telefoner",
           "health_unavailable_minutes": "Offline i mindst (minutter)",
           "health_battery_threshold": "Batteriadvarsel under (%)",
           "health_project": "Projektnøgle til automatiske opgaver (tom = FIX, oprettes ved behov)",
