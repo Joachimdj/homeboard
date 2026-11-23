@@ -188,7 +188,7 @@ Assistant (nothing leaves your network), shown on the **Insights** tab with the 
 | Smart defaults | which person, labels, priority and lead time go with similar titles | grey suggestion chips under the quick-add bar, one tap to apply (`homeboard.suggest`, or `suggest: true` on `quick_add`) |
 | Patterns | the same task created again and again at a regular rhythm | "Make 'Order bin bags' a recurring chore?" (accept creates it) |
 | Workload and speed | how long things take, per person, type and label; who is busiest | numbers on the Insights tab, and a "least busy person" hint when nothing else decides |
-| Sensor rhythms and noisy faults | how often each sensor normally reports; faults you keep closing or that keep coming back | a "stopped reporting" health issue for a sensor that went quiet, and "Stop reporting this?" suggestions |
+| Sensor rhythms and noisy faults | how often each sensor normally reports; faults you keep closing or that keep coming back | a "stopped reporting" health issue for a sensor that went quiet, "Stop reporting this?" suggestions, and more patience with devices that come back by themselves (offline for hours, answer once a day) |
 | Everyday rhythm (**off by default**) | for each person, hour by hour and weekday by weekday, whether they are home (counts only: no places, no coordinates) | a better morning-digest time, and pushes held while someone is away |
 
 Defaults, patterns and workload are computed live from the issues on the board, so they learn from what is

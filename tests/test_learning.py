@@ -444,6 +444,7 @@ async def test_insights_page_content(hass, manager):
         "tracked_sensors": 0,
         "silent": [],
         "flapping": [],
+        "patient": 0,
     }
     manager.options = {
         "learn_defaults": False,
@@ -498,3 +499,48 @@ async def test_engine_ticks_refresh_the_badge_and_unload_cleanly(hass, entry):
     )
     assert await hass.config_entries.async_unload(entry.entry_id)
     assert manager.learning._unsub is None
+
+
+async def test_sensor_with_long_quiet_spells_is_not_called_silent_within_them(
+    hass, manager, broken, freezer
+):
+    freezer.move_to("2026-12-01 08:00:00+01:00")
+    _, entity_id = make_sensor(hass, broken, "Garage")
+    manager.learning.sample()
+    attrs = {"state_class": "measurement", "device_class": "temperature"}
+
+    def report(steps, gap):
+        for step in range(steps):
+            freezer.tick(gap)
+            hass.states.async_set(entity_id, str(20 + step % 3), attrs)
+            manager.learning.sample()
+
+    report(15, timedelta(minutes=15))
+    report(1, timedelta(hours=6))  # one long quiet spell now and then
+    report(15, timedelta(minutes=15))
+    stat = manager.learning_data["health"]["sensors"][entity_id]
+    assert stat["peak"] == 360 and 10 <= stat["ewma"] <= 30  # the average does not show it
+    freezer.tick(timedelta(hours=5))
+    assert manager.learning.silent_candidates() == []  # 5 h is inside what it has done before
+    freezer.tick(timedelta(hours=5))
+    [candidate] = manager.learning.silent_candidates()  # 10 h is past 1.5 x 6 h
+    assert candidate["entity_id"] == entity_id and candidate["silent_minutes"] >= 600
+
+
+async def test_the_longest_quiet_spell_is_only_remembered_for_two_weeks(
+    hass, manager, broken, freezer
+):
+    freezer.move_to("2026-12-01 08:00:00+01:00")
+    _, entity_id = make_sensor(hass, broken, "Garage")
+    manager.learning.sample()
+    attrs = {"state_class": "measurement"}
+    for step, gap in enumerate([timedelta(hours=6)] + [timedelta(minutes=15)] * 5):
+        freezer.tick(gap)
+        hass.states.async_set(entity_id, str(step), attrs)
+        manager.learning.sample()
+    stats = manager.learning_data["health"]["sensors"]
+    assert stats[entity_id]["peak"] == 360
+    freezer.tick(timedelta(days=15))
+    hass.states.async_set(entity_id, "99", attrs)
+    manager.learning.sample()
+    assert stats[entity_id]["peak"] > 15 * 24 * 60 - 1  # the old peak is replaced by this gap

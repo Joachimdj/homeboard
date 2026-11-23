@@ -28,6 +28,10 @@ from .const import (
     CONF_HEALTH_EXCLUDE_ENTITIES,
     CONF_HEALTH_EXCLUDE_INTEGRATIONS,
     HEALTH_IGNORED_PLATFORMS,
+    HEALTH_PATIENCE_FACTOR,
+    HEALTH_PATIENCE_KEEP_DAYS,
+    HEALTH_PATIENCE_LEARN_MAX_MINUTES,
+    HEALTH_PATIENCE_MAX_MINUTES,
     SAVE_DELAY,
 )
 from .model import InvalidError, NotFoundError, status_by_id
@@ -52,6 +56,9 @@ MIN_UPDATES_FOR_SILENCE = 12
 MAX_NORMAL_MINUTES = 720
 SILENT_FACTOR = 8
 SILENT_FLOOR_MINUTES = 180
+SILENT_PEAK_FACTOR = 1.5
+PEAK_KEEP_SECONDS = 14 * 86400
+MAX_PATIENCE = 500
 IGNORE_AFTER = 3
 MAX_NOTED = 200
 LISTED = 20
@@ -450,9 +457,19 @@ class LearningEngine:
             if stamp <= stat["last"]:
                 continue
             gap = (stamp - stat["last"]) / 60
-            if gap >= 1 and (stat["n"] < 5 or gap <= 4 * stat["ewma"]):
-                stat["ewma"] = round(gap if stat["n"] == 0 else 0.8 * stat["ewma"] + 0.2 * gap, 1)
-                stat["n"] += 1
+            if gap >= 1:
+                # The longest silence of the last two weeks. A sensor that now and then stays
+                # quiet for a day (a battery device, a sensor that only reports changes) is
+                # not broken the next time it does, and the average above cannot tell.
+                if gap > stat.get("peak", 0.0) or stamp - stat.get("peak_at", stamp) > (
+                    PEAK_KEEP_SECONDS
+                ):
+                    stat["peak"], stat["peak_at"] = round(gap, 1), stamp
+                if stat["n"] < 5 or gap <= 4 * stat["ewma"]:
+                    stat["ewma"] = round(
+                        gap if stat["n"] == 0 else 0.8 * stat["ewma"] + 0.2 * gap, 1
+                    )
+                    stat["n"] += 1
             stat["last"] = stamp
         for entity_id in [e for e in sensors if e not in seen and self.hass.states.get(e) is None]:
             del sensors[entity_id]
@@ -481,7 +498,10 @@ class LearningEngine:
             if state.state != STATE_UNKNOWN:
                 last = max(last, _reported(state))
             silent = (now - last) / 60
-            if silent > max(SILENT_FACTOR * normal, SILENT_FLOOR_MINUTES):
+            patient = min(
+                SILENT_PEAK_FACTOR * float(stat.get("peak", 0.0)), HEALTH_PATIENCE_MAX_MINUTES
+            )
+            if silent > max(SILENT_FACTOR * normal, SILENT_FLOOR_MINUTES, patient):
                 found.append(
                     {
                         "entity_id": entity_id,
@@ -508,6 +528,51 @@ class LearningEngine:
         counters[key] = counters.get(key, 0) + 1
         self._save()
         self.refresh()
+
+    # -- patience: faults that went away by themselves
+
+    def patience(self, key: str) -> float:
+        """Return how many minutes a fault must have lasted before it is reported (0 = normal).
+
+        Some devices answer once a day, or drop off the network for hours and come back. A
+        fault with this key has gone away by itself before, so it is only worth a card on the
+        board once it has lasted clearly longer than the longest time it ever fixed itself in.
+        """
+        if not self.enabled("health"):
+            return 0.0
+        item = ((self.data.get("health") or {}).get("patience") or {}).get(key)
+        if not item:
+            return 0.0
+        return min(
+            float(item.get("minutes", 0.0)) * HEALTH_PATIENCE_FACTOR, HEALTH_PATIENCE_MAX_MINUTES
+        )
+
+    def record_self_healed(self, key: str, minutes: float) -> bool:
+        """Remember that the fault ``key`` fixed itself after ``minutes``. Returns True if it changed."""
+        if not self.enabled("health") or not 1 <= minutes <= HEALTH_PATIENCE_LEARN_MAX_MINUTES:
+            return False
+        now = dt_util.utcnow()
+        book: dict[str, dict[str, Any]] = self.data.setdefault("health", {}).setdefault(
+            "patience", {}
+        )
+        item = book.get(key) or {"minutes": 0.0, "n": 0}
+        book[key] = {
+            "minutes": round(max(float(item["minutes"]), minutes), 1),
+            "n": int(item["n"]) + 1,
+            "last": now.isoformat(),
+        }
+        horizon = now - timedelta(days=HEALTH_PATIENCE_KEEP_DAYS)
+        for old in [
+            k
+            for k, v in book.items()
+            if (stamp := dt_util.parse_datetime(v.get("last", ""))) is None or stamp < horizon
+        ]:
+            del book[old]
+        for old in sorted(book, key=lambda k: book[k]["last"])[: max(0, len(book) - MAX_PATIENCE)]:
+            del book[old]
+        self._save()
+        self.refresh()
+        return True
 
     def health_ignored(self) -> set[str]:
         """Return the fault keys the user told Homeboard to stop reporting."""
@@ -555,6 +620,7 @@ class LearningEngine:
                 "tracked_sensors": len(health.get("sensors") or {}),
                 "silent": self.silent_candidates()[:LISTED],
                 "flapping": flapping[:LISTED],
+                "patient": len(health.get("patience") or {}),
             }
         if admin and features["habits"] and self.manager.habits is not None:
             learned["habits"] = self.manager.habits.status()

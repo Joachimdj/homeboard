@@ -71,13 +71,15 @@ from .const import (
     PROTECTED_DOMAINS,
 )
 from .data import UNSET, HomeboardData
-from .learning import fmt_minutes
+from .learning import SILENT_FLOOR_MINUTES, fmt_minutes
 from .model import NotFoundError
 
 _LOGGER = logging.getLogger(__name__)
 
 SCAN_INTERVAL = timedelta(minutes=5)
 KEY_PREFIX = "health:"
+PATIENCE_DETECTORS = frozenset({"offline", "silent"})
+MAX_WAITING_LISTED = 30
 BATTERY_HYSTERESIS = 5
 BATTERY_GROUP_KEY = f"{KEY_PREFIX}battery_group"
 MIN_DEVICES_FOR_GROUPING = 3
@@ -146,6 +148,8 @@ class Finding:
     """Identifies *what* is affected, so the description is only rewritten when that changes."""
     refresh_summary: bool = False
     """Grouped findings carry a count in the title, which follows the group."""
+    since: datetime | None = None
+    """When the fault started, so the monitor can tell how long it lasted when it fixes itself."""
 
     def brief(self, action: str) -> dict[str, Any]:
         """Return the short form used in scan results."""
@@ -168,10 +172,19 @@ def _bool_option(options: Any, name: str, default: bool) -> bool:
 class _Context:
     """Registries and option lookups shared by the detectors."""
 
-    def __init__(self, hass: HomeAssistant, options: Any, active_keys: set[str]) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        options: Any,
+        active_keys: set[str],
+        learning: Any = None,
+    ) -> None:
         self.hass = hass
         self.options = options
         self.active_keys = active_keys
+        self.learning = learning
+        self.waiting: list[dict[str, Any]] = []
+        """Faults held back because the device has fixed itself before (see ``patience``)."""
         self.entities = er.async_get(hass)
         self.devices = dr.async_get(hass)
         self.areas = ar.async_get(hass)
@@ -185,6 +198,26 @@ class _Context:
         """Also report devices that are normally off or charge themselves."""
         self.battery_members: set[str] = set()
         """Entities already in the open battery group (they get the hysteresis)."""
+
+    def patience(self, key: str) -> timedelta:
+        """Return how long the fault ``key`` must last before it is reported (0 = the normal wait)."""
+        if self.learning is None:
+            return timedelta(0)
+        return timedelta(minutes=self.learning.patience(key))
+
+    def hold(
+        self, finding_key: str, summary: str, detector: str, waited: timedelta, wait: timedelta
+    ) -> None:
+        """Note a fault that is not reported yet because the device is known to come back."""
+        self.waiting.append(
+            {
+                "key": finding_key,
+                "summary": summary,
+                "detector": detector,
+                "waited_minutes": round(waited.total_seconds() / 60),
+                "reported_after_minutes": round(wait.total_seconds() / 60),
+            }
+        )
 
     def entry_excluded(self, entry: er.RegistryEntry) -> bool:
         """Return True if the entity is switched off, hidden, excluded or a helper."""
@@ -320,6 +353,11 @@ def collect_offline(ctx: _Context, now: datetime, minutes: int) -> list[Finding]
         if now - since < threshold:
             continue
         name = ctx.device_name(device)
+        key = f"{KEY_PREFIX}offline:{device.id}"
+        wait = max(threshold, ctx.patience(key))
+        if now - since < wait:  # it has been gone this long before and came back by itself
+            ctx.hold(key, f"{name} is offline", "offline", now - since, wait)
+            continue
         security = ctx.is_security(pairs)
         lines = [f"{_friendly(state, entry)} (`{entry.entity_id}`)" for entry, state in pairs]
         where = ctx.entry_title(_config_entry_id(device))
@@ -330,13 +368,14 @@ def collect_offline(ctx: _Context, now: datetime, minutes: int) -> list[Finding]
         if area:
             facts.append(f"Area: {area}")
         finding = Finding(
-            key=f"{KEY_PREFIX}offline:{device.id}",
+            key=key,
             detector="offline",
             summary=f"{name} is offline",
             description=" | ".join(facts) + "\n\n" + _listing(lines) + FOOTER,
             priority="high" if security else "medium",
             labels=["auto", "offline"] + (["security"] if security else []),
             fingerprint=tuple(sorted(entry.entity_id for entry, _ in pairs)),
+            since=since,
         )
         findings.append(finding)
         entry_id = _config_entry_id(device)
@@ -521,6 +560,7 @@ def collect_integrations(ctx: _Context) -> list[Finding]:
 def collect_silent(ctx: _Context, learning: Any) -> list[Finding]:
     """Sensors that normally report regularly but have gone quiet (learned rhythm)."""
     by_device: dict[str, list[tuple[er.RegistryEntry, dict[str, Any]]]] = defaultdict(list)
+    now = dt_util.utcnow()
     for candidate in learning.silent_candidates():
         entry = ctx.entities.async_get(candidate["entity_id"])
         if entry is None or ctx.entry_excluded(entry):
@@ -535,6 +575,12 @@ def collect_silent(ctx: _Context, learning: Any) -> list[Finding]:
             if device
             else _friendly(ctx.hass.states.get(first_entry.entity_id), first_entry)
         )
+        key = f"{KEY_PREFIX}silent:{ident}"
+        patience = ctx.patience(key)
+        quiet = max(c["silent_minutes"] for _, c in items)
+        if patience and timedelta(minutes=quiet) < patience:  # quiet this long before, came back
+            ctx.hold(key, f"{name} stopped reporting", "silent", timedelta(minutes=quiet), patience)
+            continue
         lines = [
             f"{_friendly(ctx.hass.states.get(e.entity_id), e)}: normally every ~{c['normal_minutes']} min, "
             f"silent for {fmt_minutes(c['silent_minutes'])}"
@@ -546,13 +592,14 @@ def collect_silent(ctx: _Context, learning: Any) -> list[Finding]:
         )
         findings.append(
             Finding(
-                key=f"{KEY_PREFIX}silent:{ident}",
+                key=key,
                 detector="silent",
                 summary=f"{name} stopped reporting",
                 description=_listing(lines) + FOOTER,
                 priority="high" if security else "medium",
                 labels=["auto", "silent"] + (["security"] if security else []),
                 fingerprint=tuple(sorted(e.entity_id for e, _ in items)),
+                since=now - timedelta(minutes=quiet),
             )
         )
     return findings
@@ -703,6 +750,10 @@ class HealthMonitor:
         self._unsub_started: CALLBACK_TYPE | None = None
         self._fingerprints: dict[str, tuple[str, ...]] = {}
         self._review_fingerprint: tuple[str, ...] = ()
+        self._since: dict[str, datetime] = {}
+        """When each reported fault started (memory only: used to learn how long it took to heal)."""
+        self.waiting: list[dict[str, Any]] = []
+        """Faults the last collection held back because the device is known to come back."""
         self.last_result: dict[str, Any] | None = None
 
     # -- lifecycle
@@ -754,7 +805,7 @@ class HealthMonitor:
             and not issue["archived"]
             and self.manager.category(issue) != "done"
         }
-        ctx = _Context(self.hass, options, active)
+        ctx = _Context(self.hass, options, active, self.manager.learning)
         for issue in self.manager.issues.values():
             if issue.get("dedupe_key") == BATTERY_GROUP_KEY and issue["id"] in self._fingerprints:
                 ctx.battery_members.update(self._fingerprints[issue["id"]])
@@ -792,6 +843,7 @@ class HealthMonitor:
                 f.key.startswith(f"{KEY_PREFIX}offline_entry:") and f.key.split(":", 2)[2] in broken
             )
         ]
+        self.waiting = ctx.waiting
         unique = {f.key: f for f in findings}
         order = {name: n for n, name in enumerate(reversed(PRIORITIES))}
         return sorted(unique.values(), key=lambda f: (-order.get(f.priority, 0), f.key))
@@ -835,6 +887,7 @@ class HealthMonitor:
             "closed": 0,
             "suppressed": 0,
             "findings": [],
+            "waiting": [],
         }
         if (
             not dry_run
@@ -846,13 +899,19 @@ class HealthMonitor:
             result["skipped"] = "disabled" if not self.enabled else "startup_grace"
             return result
 
+        if not dry_run:
+            self._seed_patience()
         findings = await self.async_collect()
         keys = {f.key for f in findings}
+        result["waiting"] = self.waiting[:MAX_WAITING_LISTED]
 
         def add(finding: Finding, action: str) -> None:
             result["findings"].append(finding.brief(action))
 
         if not dry_run:
+            for finding in findings:
+                if finding.since is not None:
+                    self._since.setdefault(finding.key, finding.since)
             for key in keys:
                 self._seen[key] = self._seen.get(key, 0) + 1
                 self._absent.pop(key, None)
@@ -987,6 +1046,7 @@ class HealthMonitor:
             count = self._absent.get(key, 0) + 1
             self._absent[key] = count
             if force or count >= HEALTH_DEBOUNCE_SCANS:
+                self._learn_patience(issue, key, now)
                 self.manager.resolve_automatically(
                     issue["id"], "Resolved automatically: the problem is no longer detected."
                 )
@@ -1001,7 +1061,61 @@ class HealthMonitor:
                         "action": "closed",
                     }
                 )
+        if not dry_run:
+            for key in [k for k in self._since if k not in keys and k not in self._absent]:
+                del self._since[key]
         return result
+
+    # -- patience (devices that answer once a day or come back by themselves)
+
+    def _learn_patience(self, issue: dict[str, Any], key: str, now: datetime) -> None:
+        """Remember how long a fault lasted before it fixed itself, so the next one waits longer."""
+        since = self._since.pop(key, None)
+        learning = self.manager.learning
+        parts = key.split(":")
+        if learning is None or len(parts) < 3 or parts[1] not in PATIENCE_DETECTORS:
+            return
+        if since is None:  # after a restart: count from the card, plus the wait before it
+            created = dt_util.parse_datetime(issue.get("created") or "")
+            if created is None:
+                return
+            since = created - self._lead(parts[1])
+        learning.record_self_healed(key, (now - since).total_seconds() / 60)
+
+    def _lead(self, detector: str) -> timedelta:
+        """Return how long a fault of this kind had already lasted when its card was made."""
+        if detector == "offline":
+            return timedelta(
+                minutes=int(
+                    self._opt(CONF_HEALTH_UNAVAILABLE_MINUTES, DEFAULT_HEALTH_UNAVAILABLE_MINUTES)
+                )
+            )
+        return timedelta(minutes=SILENT_FLOOR_MINUTES)
+
+    def _seed_patience(self) -> None:
+        """Once: learn from the faults that already closed themselves before this existed."""
+        learning, state = self.manager.learning, self.manager.health_state
+        if learning is None or not learning.enabled("health") or state.get("patience_seeded"):
+            return
+        for issue in list(self.manager.issues.values()):
+            key = issue.get("dedupe_key") or ""
+            parts = key.split(":")
+            if (
+                issue["source"] != "health"
+                or len(parts) < 3
+                or parts[1] not in PATIENCE_DETECTORS
+                or not issue.get("auto_resolved")
+                or self.manager.category(issue) != "done"
+            ):
+                continue
+            created = dt_util.parse_datetime(issue.get("created") or "")
+            resolved = dt_util.parse_datetime(issue.get("resolved") or "")
+            if created is None or resolved is None:
+                continue
+            lasted = resolved - created + self._lead(parts[1])
+            learning.record_self_healed(key, lasted.total_seconds() / 60)
+        state["patience_seeded"] = True
+        self.manager.save_health_state()
 
     # -- first-scan review
 

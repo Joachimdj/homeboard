@@ -106,6 +106,13 @@ open auto issues, highest priority first; device findings are replaced by the in
 when the whole integration is down. Security devices (doors, windows, motion, smoke, gas, water,
 tamper, locks, cameras, alarm panels) get priority `high` and label `security`.
 
+**Patience.** Devices that answer once a day, or go offline for hours and come back, would open and close
+a card again and again. When an `offline` or `silent` card closes by itself, Homeboard remembers how long the fault lasted
+(`learning.health.patience[<dedupe_key>] = {minutes, n, last}`, kept 90 days, only outages up to 2 days count). The same
+fault is reported again only after 1.5 x the longest such time (at most 3 days). Faults held back are listed in the scan
+result under `waiting`. On the first scan after the update the cards that already closed by themselves are used
+(`health.patience_seeded`). Needs the *Sensor rhythms and noisy faults* learning (`learn_health`, on by default); without it the fixed wait applies.
+
 `dedupe_key` is `health:<detector>:<id>` (`health:offline:<device_id>`, `health:battery:<device_id>`,
 `health:repair:<domain>:<issue_id>`, `health:entry:<entry_id>`, `health:reauth:<entry_id>`,
 `health:updates`, `health:battery_group`). Grouped findings (offline per integration, battery group) rewrite
@@ -195,7 +202,7 @@ through the subscription (optimistic update, reconcile on next push). Errors:
 | `homeboard/recurring/update` | `recurring_id`, fields | recurring |
 | `homeboard/recurring/delete` | `recurring_id` | `{deleted}` |
 | `homeboard/recurring/run_now` | `recurring_id` | `{issue}` or `{issue: null}` when skipped |
-| `homeboard/health/scan` (admin) | `dry_run?` | `{created, reopened, closed, suppressed, findings:[{key, summary, priority, detector}]}` |
+| `homeboard/health/scan` (admin) | `dry_run?` | `{created, reopened, closed, suppressed, findings:[{key, summary, priority, detector}], waiting:[{key, summary, detector, waited_minutes, reported_after_minutes}]}` |
 
 Permissions: issue, comment, quick-add and recurring operations are open to every signed-in user;
 `project/*` and `status/*` need an admin.
@@ -236,7 +243,7 @@ All issue services address the issue by `issue` (key `HOME-12` or id) **or** by 
 | `quick_add` | `text`, `project?`, `source?` (default `service`) | `{key, id, parsed}` |
 | `create_project`, `update_project`, `add_status`, `update_status`, `remove_status` | as the WS equivalents | the object |
 | `create_recurring`, `update_recurring`, `delete_recurring`, `run_recurring` | as the WS equivalents | the object |
-| `scan_health` | `dry_run?` | `{created, reopened, closed, suppressed, findings}` |
+| `scan_health` | `dry_run?` | `{created, reopened, closed, suppressed, findings, waiting}` |
 
 ## 8. Entities (summary; details in DESIGN.md section 3)
 
@@ -319,7 +326,8 @@ the chips): fields the text did not specify are filled from the suggestion.
                   "types": { "bug": 4.2 }, "labels": { "garden": 6.0 } },          // average days created -> done
     "rhythm":   { "people": { "person.x": { "samples": 2016, "grid": [[0.0, ...24 numbers 0..1], ...7 rows, Mon=0] } } },
     "health":   { "tracked_sensors": 812, "silent": [ { "entity_id": "sensor.x", "normal_minutes": 15, "silent_minutes": 190 } ],
-                  "flapping": [ { "key": "health:offline:...", "summary": "...", "reopened": 3 } ] }
+                  "flapping": [ { "key": "health:offline:...", "summary": "...", "reopened": 3 } ],
+                  "patient": 4 }
   }
 }
 ```

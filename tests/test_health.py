@@ -729,9 +729,12 @@ async def test_issue_closes_itself_after_two_clean_scans_and_comes_back(
     assert "Resolved automatically" in issue["comments"][-1]["text"]
     assert two["findings"][-1]["action"] == "closed"
 
-    # the fault returns: seen twice again, then the same issue is reopened
+    # the fault returns: seen twice again, then the same issue is reopened. The gate has been
+    # gone for 4 hours before, so Homeboard waits 1.5 x that before it counts as a fault again.
     hass.states.async_set("sensor.gate_a", "unavailable")
     freezer.tick(timedelta(minutes=61))
+    assert (await mon.async_scan())["findings"] == []
+    freezer.tick(timedelta(hours=6))
     assert (await mon.async_scan())["findings"][0]["action"] == "pending"
     assert (await mon.async_scan())["reopened"] == 1
     assert manager.category(issue) != "done" and not issue["auto_resolved"]
@@ -906,3 +909,117 @@ async def test_monitor_starts_after_ha_started_and_runs_on_a_timer(hass, manager
     async_fire_time_changed(hass)
     await hass.async_block_till_done()
     assert any(i["source"] == "health" for i in manager.issues.values())
+
+
+# ------------------------------------------------------------------ patience (devices that come back)
+
+
+async def test_a_device_that_came_back_by_itself_is_reported_later_next_time(
+    hass, manager, source, freezer
+):
+    await broken_device(hass, source, freezer)  # gone since 08:00, now 12:00
+    mon = monitor(manager)
+    await mon.async_scan()
+    await mon.async_scan()
+    issue = next(i for i in manager.issues.values() if i["source"] == "health")
+    key = issue["dedupe_key"]
+    assert manager.learning.patience(key) == 0
+    hass.states.async_set("sensor.gate_a", "5")
+    await mon.async_scan()
+    assert (await mon.async_scan())["closed"] == 1
+    assert manager.learning.patience(key) == 360  # 1.5 x the 4 hours it was gone
+
+    hass.states.async_set("sensor.gate_a", "unavailable")  # gone again at 12:00
+    freezer.tick(timedelta(hours=3))
+    assert await findings(manager) == []  # 3 h is past the normal hour, but not past 6 h
+    [held] = mon.waiting
+    assert held["key"] == key and held["waited_minutes"] == 180
+    assert held["reported_after_minutes"] == 360 and held["summary"] == "Gate is offline"
+    result = await mon.async_scan(dry_run=True)
+    assert result["findings"] == [] and result["waiting"] == [held]
+    freezer.tick(timedelta(hours=3, minutes=1))
+    [again] = await findings(manager)
+    assert again.key == key and not mon.waiting
+
+
+async def test_patience_ignores_learning_switched_off_and_is_capped(manager):
+    learning = manager.learning
+    key = "health:offline:abc"
+    assert learning.record_self_healed(key, 600) and learning.patience(key) == 900
+    assert (
+        learning.record_self_healed(key, 60) and learning.patience(key) == 900
+    )  # keeps the longest
+    assert learning.record_self_healed(key, 2 * 24 * 60)
+    assert learning.patience(key) == 3 * 24 * 60  # 1.5 x 48 h, capped at 3 days
+    assert not learning.record_self_healed("health:offline:long", 2 * 24 * 60 + 1)
+    assert not learning.record_self_healed("health:offline:tiny", 0.5)
+    assert learning.patience("health:offline:long") == 0
+    manager.options = {**manager.options, "learn_health": False}
+    assert learning.patience(key) == 0 and not learning.record_self_healed("health:x:y", 100)
+    manager.options = {**manager.options, "learn_health": True}
+    assert learning.patience(key) == 3 * 24 * 60  # nothing was thrown away
+
+
+async def test_forgetting_health_knowledge_removes_the_patience(manager):
+    manager.learning.record_self_healed("health:offline:abc", 300)
+    assert manager.learning.insights()["learned"]["health"]["patient"] == 1
+    manager.learning.forget("health")
+    assert manager.learning.patience("health:offline:abc") == 0
+
+
+async def test_old_patience_is_forgotten(manager, freezer):
+    freezer.move_to(OLD)
+    manager.learning.record_self_healed("health:offline:old", 300)
+    freezer.tick(timedelta(days=const.HEALTH_PATIENCE_KEEP_DAYS + 1))
+    manager.learning.record_self_healed("health:offline:new", 300)
+    assert manager.learning.patience("health:offline:old") == 0
+    assert manager.learning.patience("health:offline:new") == 450
+
+
+async def test_cards_that_closed_themselves_before_teach_patience_once(
+    hass, manager, source, freezer
+):
+    freezer.move_to("2026-12-01 08:00:00+01:00")
+    project = manager.create_project(key="FIX", name="Fixes")
+    old = []
+    for key in ("health:offline:aaa", "health:silent:bbb", "health:battery:ccc"):
+        issue, _ = manager.create_issue(
+            project["id"], key, dedupe_key=key, source="health", labels=["auto"]
+        )
+        old.append(issue)
+    freezer.tick(timedelta(hours=2))
+    for issue in old:
+        manager.resolve_automatically(issue["id"], "gone")
+    manual, _ = manager.create_issue(
+        project["id"], "by hand", dedupe_key="health:offline:ddd", source="health"
+    )
+    manager.move_issue(manual["id"], "Done")  # a person closed it: not a device that heals itself
+    mon = monitor(manager)
+    await mon.async_scan()
+    learning = manager.learning
+    assert learning.patience("health:offline:aaa") == 270  # (2 h + the 60 min wait) x 1.5
+    assert learning.patience("health:silent:bbb") == 450  # (2 h + the 180 min floor) x 1.5
+    assert (
+        learning.patience("health:battery:ccc") == 0
+        and learning.patience("health:offline:ddd") == 0
+    )
+    assert manager.health_state["patience_seeded"] is True
+    await mon.async_scan()
+    assert learning.data["health"]["patience"]["health:offline:aaa"]["n"] == 1  # only once
+
+
+async def test_devices_held_back_do_not_make_an_integration_group(hass, manager, source, freezer):
+    freezer.move_to(OLD)
+    ids = {
+        name: make_device(hass, source, name, [("sensor", "a", "unavailable", {})])
+        for name in ("Cam 1", "Cam 2", "Cam 3")
+    }
+    freezer.move_to(NOW)
+    [group] = await findings(manager)
+    assert group.summary == "Fake Hub: 3 devices are offline"
+    manager.learning.record_self_healed(
+        f"health:offline:{ids['Cam 3']}", 300
+    )  # it comes back daily
+    got = await findings(manager)
+    assert sorted(f.summary for f in got) == ["Cam 1 is offline", "Cam 2 is offline"]
+    assert [w["summary"] for w in manager.health.waiting] == ["Cam 3 is offline"]

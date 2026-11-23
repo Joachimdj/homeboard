@@ -119,6 +119,13 @@ HEALTH_PROJECT_NAME: Final = "Smart home fixes"
 HEALTH_STARTUP_GRACE_MINUTES: Final = 10
 HEALTH_DEBOUNCE_SCANS: Final = 2
 HEALTH_REOPEN_COOLDOWN_MINUTES: Final = 30
+HEALTH_PATIENCE_FACTOR: Final = 1.5
+"""A fault that went away by itself is reported only after 1.5 x its longest such episode."""
+HEALTH_PATIENCE_LEARN_MAX_MINUTES: Final = 2 * 24 * 60
+"""Longer outages are real faults that somebody fixed, not a device that is slow to answer."""
+HEALTH_PATIENCE_MAX_MINUTES: Final = 3 * 24 * 60
+"""However patient Homeboard has become, a device silent for 3 days is always reported."""
+HEALTH_PATIENCE_KEEP_DAYS: Final = 90
 HEALTH_IGNORE_LABEL: Final = "ignore"
 # Browsers and phones come and go and charge themselves: not faults, unless the owner asks for them.
 HEALTH_EPHEMERAL_PLATFORMS: Final = frozenset({"browser_mod", "mobile_app", "ios"})

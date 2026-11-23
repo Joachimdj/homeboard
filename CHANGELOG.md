@@ -4,6 +4,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions follo
 [Semantic Versioning](https://semver.org/); while the project is 0.x only the patch number is bumped
 for small changes.
 
+## [0.4.1] - 2026-11-23
+
+### Fixed
+- **Devices that only answer now and then no longer fill the board.** A device that answers once a day, or drops off
+  and comes back after a few hours, got a card ("is offline", "stopped reporting") that closed itself soon after,
+  and for doors, windows and motion sensors a push as well. Homeboard now learns *patience* per device (needs
+  *Configure > Learning > Sensor rhythms and noisy faults*, which is on by default): when a fault closes by itself after N minutes, the same
+  fault is only reported again once it has lasted 1.5 x N (never more than 3 days; outages over 2 days count as real
+  faults and teach nothing). Cards that already closed by themselves are used the first time, so the noisy devices
+  are quiet from the start.
+- "Stopped reporting" now also remembers the longest quiet spell of the last two weeks for each sensor, so a sensor
+  that now and then stays quiet for hours is not called silent inside that time.
+- The scan result (`scan_health`, `homeboard/health/scan`) has a new `waiting` list: faults held back because the
+  device is known to come back, with how long they have lasted and when they would be reported. Forgetting the
+  *Sensor rhythms and noisy faults* knowledge also forgets the patience.
+
 ## [0.4.0] - 2026-11-23
 
 ### Added
