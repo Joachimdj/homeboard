@@ -589,6 +589,8 @@ ai_analyze:
       example: The old bulb was replaced by a Hue bulb
       selector:
         text: {}
+scan_habits:
+  fields: {}
 add_checklist_item:
   fields:
     issue:
@@ -700,5 +702,6 @@ forget_learning:
           - workload
           - health
           - rhythm
+          - habits
           mode: dropdown
           translation_key: learning_feature

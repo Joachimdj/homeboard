@@ -89,7 +89,8 @@
           "learn_patterns": "Spot repeating tasks and suggest recurring chores",
           "learn_workload": "Workload and speed",
           "learn_health": "Sensor rhythms and noisy faults",
-          "learn_rhythm": "Everyday rhythm (home / away by hour)"
+          "learn_rhythm": "Everyday rhythm (home / away by hour)",
+          "learn_habits": "Habit ideas: suggest automations from how lights, switches and sensors are used (never anything with the alarm, locks or sirens)"
         }
       },
       "ai": {
@@ -233,7 +234,8 @@
         "patterns": "Patterns",
         "workload": "Workload",
         "health": "Health",
-        "rhythm": "Everyday rhythm"
+        "rhythm": "Everyday rhythm",
+        "habits": "Habit ideas"
       }
     }
   },
@@ -773,6 +775,11 @@
           "description": "Something the AI should know (max 500 characters)."
         }
       }
+    },
+    "scan_habits": {
+      "name": "Scan for habits",
+      "description": "Read the recorder history and look for habits that could become automations (lights, switches, fans, covers and motion / door sensors). The ideas land in the Homeboard inbox (Insights). Needs habit ideas switched on in the options. Nothing is created.",
+      "fields": {}
     },
     "add_checklist_item": {
       "name": "Add checklist item",

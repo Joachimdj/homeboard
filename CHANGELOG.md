@@ -4,6 +4,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions follo
 [Semantic Versioning](https://semver.org/); while the project is 0.x only the patch number is bumped
 for small changes.
 
+## [0.4.0] - 2026-11-23
+
+### Added
+- **Automation ideas in an inbox (Habits, opt-in).** Homeboard reads the recorder history of lights, switches,
+  fans, covers and motion / door sensors and suggests routines ("turn on X at 06:30 on weekdays"), follow-ups
+  ("when the motion sensor detects something, turn on X") and switch-backs ("turn X off 4 minutes after the
+  motion stopped"). The ideas land in the Insights tab with their evidence and the automation as YAML. *Create*
+  (administrators) writes the automation with a backup, validates it and **switches it off**; *Undo* removes it
+  again unless it was edited. Local only, no AI, off by default (*Configure > Learning > Habit ideas*). Details in
+  `docs/DESIGN-0.4.md`.
+- Never for persons, trackers, media players, climate, alarm, siren, lock, valve, garage doors or gates; never what an
+  automation already does; the same safe writer as AI Fix (refuses files with `!secret` / `!include`).
+- Websocket `homeboard/habits/scan|create|undo` (admin), service `homeboard.scan_habits`, event
+  `homeboard_habit_automation_created`, option `learn_habits`. Homeboard now lists `recorder` as an optional dependency.
+- The recorder keeps 10 days by default: Homeboard works with what there is (at least 7 days).
+- Found by an independent review before release and fixed with a test each: weekday routines are not "every day",
+  flapping entities and chance follow-ups are skipped, creating takes a lock and verifies the automation is off (removes
+  it otherwise), the safety rules are applied again at create time, switches only get "off" ideas, only administrators see
+  the ideas, old backups are pruned. See `docs/DESIGN-0.4.md` section 3b.
+
 ## [0.3.0] - 2026-11-23
 
 ### Added

@@ -41,6 +41,9 @@ Everything runs inside Home Assistant: no server, no cloud, no extra add-on.
 - **Learns, but only suggests**: smart defaults for new issues, recurring-chore suggestions,
   workload and speed, sensor rhythms, and (opt-in) everyday home / away rhythm
   ([how it works](#insights-homeboard-learns)).
+- **Automation ideas in an inbox** (opt-in): Homeboard looks at how your lights, switches and sensors have been
+  used and suggests automations ("turn on the hall light at 06:30 on weekdays"). You create them with one press,
+  they start switched off, and you can undo ([how it works](#habits-automation-ideas-in-your-inbox)).
 - **Native entities**: a `todo` list and a `calendar` per project, sensors for counts, per status and
   per person, so dashboards, Assist and automations can use the numbers.
 - **No manual setup of the frontend**: the sidebar panel and the Lovelace cards register themselves.
@@ -364,6 +367,34 @@ Try it any time: call **homeboard.scan_health** with `dry_run: true` (Developer 
 what would be created without changing anything. A manual scan (without dry run) acts immediately.
 Switch the whole thing off, exclude entities and integrations, or also report the normally-off devices
 (TVs, bulbs, phones, robot mowers) in **Configure > Smart home health**.
+
+## Habits: automation ideas in your inbox
+
+Switch on **Configure > Learning > Habit ideas** and Homeboard reads the recorder history of your **lights, switches,
+fans, covers and motion / door sensors** (only inside Home Assistant, nothing is sent anywhere, no AI involved) and
+looks for habits. The ideas land in the **Insights** tab, in the inbox *Automation ideas*:
+
+| Idea | Looks like | Rule |
+|------|-----------|------|
+| Routine | "Turn on the hall light at 06:30 on weekdays" | switched the same way within a 30-minute window on at least 5 days and at least 70 % of the days of its day group (every day, weekdays, weekends) |
+| Follow-up | "Turn on the hall light when the hall motion sensor detects something" | the light turned on within a minute of the sensor at least 70 % of the time (at least 8 activations on at least 5 days); only after dark when it always happened after dark |
+| Switch back | "Turn off the hall light 4 minutes after the motion has stopped" | the light went off 1-15 minutes after the sensor went quiet at least 70 % of the time; the median delay is used |
+
+Every idea shows its evidence ("on 11 of the last 11 days, between 06:30 and 06:32") and the automation as YAML.
+**Create** (administrators, two-step) writes it to `automations.yaml` with a backup, checks it with Home Assistant's own
+validation and **switches it off**: you review it in Home Assistant and switch it on when you are happy. **Undo** removes
+it again (not if you edited it in the meantime).
+
+What it does not do: switches and smart plugs only ever get "turn off" ideas (a plug may be a heater); it never suggests anything for persons, device trackers, media players, climate, `alarm_control_panel`,
+`siren`, `lock` or `valve`, nor for garage doors and gates, nor for switches, fans or covers whose name says alarm, siren, lock, garage, gate, door, valve,
+heater, oven, pump and the like, nor for roof windows and awnings. Entities you excluded in the smart-home health options are excluded here too. It does not suggest
+what an automation already does (same entity, same direction). It cannot tell who or what caused a change, so a person, a
+button or an old script may be behind a habit: that is why you review before switching on.
+
+Good to know: Home Assistant's recorder keeps **10 days** of history unless you raise `purge_keep_days`. Homeboard uses what
+there is (it needs at least 7 days; up to 28 are used), so a longer `purge_keep_days` gives steadier ideas. Only administrators see the ideas. The scan runs at
+04:00 and when you press **Scan now**; the service `homeboard.scan_habits` does the same. *Forget* on the Insights page clears
+the ideas (created automations stay).
 
 ## AI Fix
 

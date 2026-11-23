@@ -431,6 +431,7 @@ async def test_insights_page_content(hass, manager):
         "workload": True,
         "health": True,
         "rhythm": False,
+        "habits": False,
     }
     learned = page["learned"]
     assert learned["defaults"]["issues_analysed"] == 2 and learned["defaults"]["top_labels"][0] == [

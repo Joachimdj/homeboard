@@ -158,3 +158,72 @@ Open questions for the backend
 2. Does a new analysis keep earlier applied proposals so that Undo stays possible?
 3. Can `record.proposals` be non-empty while `state` is `failed`? (They would be listed below the error.)
 4. Is `entity_name` always set when `entity` is? (Falls back to the entity id, then to "your AI Task entity".)
+
+## 0.4 Habits (PROTOCOL section 12): assumptions and choices
+
+Files: `static/habits.js` (pure logic), `habits-view.js` (vnode builders, no state), `habits-section.js` (state and calls, owned
+by `InsightsController.habits`), `clipboard.js` (the copy helper that used to be private to `ai-fix-section.js`, now shared),
+`actions.habits*`, CSS in `styles.js` (panel part), the `habits` entry in `insights.js` / `insights-view.js`. Harness:
+`tests/browser/mock-habits.js`. Tests: `tests/js/habits.test.js`, `habits-view.test.js`.
+
+- **Where it shows.** An "Inbox: automation ideas" section on top of the Insights tab, only when `insights/get` has
+  `features.habits`. `true` = inbox; `false` = the calm explanation card (shown to everyone, it has no button); missing (a 0.3
+  backend) = nothing at all. The old "Suggestions" section lists only the other kinds, with its own count, as before.
+- **`habits` is a learning feature for the tab.** `learningEnabled` now also looks at `settings.learning.habits`, so the Insights
+  tab stays when habits is the only feature on. `FEATURES` is still the 0.2 list (a test pins it); `ALL_FEATURES` adds `habits`
+  and `LEARNED_FEATURES` gets a `habits` card (label, "Uses:" text, a note, Forget with its own confirm text).
+- **Phone rules** are in the existing `@container insights (max-width: 520px)` block, not in the `@media (max-width: 720px)`
+  block: that block is in `overlayCss` (dialogs) and does not reach the panel's shadow root. 44px targets, buttons share the row,
+  the YAML scrolls inside its own box (checked: the page never gets a horizontal scrollbar at 375px).
+- **Evidence line.** Built from whatever numbers exist, in the same words for every pattern: `days`/`of` ("On 17 of 21 days"),
+  `share` as percent (clamped 0..1), `window` ("between 06:28 and 06:42"), `delay_minutes` ("about 4 min after the sensor turned
+  off"), else `samples`. Nothing assumes 28 days. For `follow_up` and `switch_back` the contract does not say what `days` / `of`
+  count (DESIGN-0.4 talks about cases); they are read as days. The pattern name only picks the icon and a chip (Routine /
+  Follow-up / Switch back); an unknown pattern gets the generic icon and the chip "Idea".
+- **YAML** is in a native `<details>` (collapsed, keyboard friendly, open state survives re-renders) with a `<pre>` and a
+  Copy YAML button (clipboard API, `execCommand` fallback as in AI Fix).
+- **Create is two-step** (confirm row, Confirm focused, Escape cancels and focus goes back to Create). On success: toast
+  "Created, switched off: <alias>" (alias from `created.alias`, else `proposal.alias`) and a refetch of `insights/get`, which
+  removes the idea and adds the record. The badge follows `settings.insights_open` by itself.
+- **One call at a time.** While Create, Undo, Dismiss or a scan runs every one of those buttons is disabled (two writes to
+  `automations.yaml` must not overlap, and a scan replaces the ideas Create refers to).
+- **Errors** (inline on the card or row, and as an error toast): fixed friendly title per code (`exists`, `blocked`,
+  `not_editable`, `create_failed`, `habits_disabled`, `not_found`, `backup_missing`), then the server's message; unknown codes get
+  "That did not work" plus the message; `unauthorized` uses the existing text. `stale` shows only the fixed sentence from the
+  brief. After any failed call the inbox is refetched; the contract does not say whether `exists` / `blocked` remove the idea,
+  so the card stays until `insights/get` says otherwise.
+- **Dismiss** is the existing `insights/dismiss` (same toast "Suggestion dismissed. It will not come back."); available to
+  non-admins as before. `insights/accept` is never called for ideas.
+- **Created list**: newest first by `ts` (the backend order is the tie-break), at most 20. `created` shows the alias, "Created
+  <time>", "Open in Home Assistant" and Undo (two-step: "Remove this automation again?"); `undone` is a muted line (the record
+  has no undo time, so only the state is shown); an unknown `state` shows no buttons at all. Non-admins see the list without
+  link and Undo. Undo calls `habits/undo` with `created_id`.
+- **Link to Home Assistant.** `edit_url` is only used when it matches `/config/automation/edit/<id>`; otherwise the path is built
+  from `auto_id`; otherwise there is no link. A plain click does `history.pushState` + `location-changed` (the way the cards
+  navigate; a real `window.location` assignment would reload the whole Home Assistant), a ctrl / cmd / middle click falls through to
+  the `href` and opens a new tab.
+- **Scan**: `habits/scan` answers with `error` as a result field (`no_recorder`, `no_history`, `failed`; any other value is shown
+  as "The scan failed."). The text stays until the next scan; without a result from this session, `learned.habits.error` is shown
+  under the status line. `no_history` says "Not enough history yet: I need at least 7 days of history" (`MIN_HISTORY_DAYS`).
+  `learned.habits.days` is shown as given ("28 days of history", "9 days of history").
+- **Reading is open to everyone**: `learned.habits` (with `created`) is assumed to be in `insights/get` for non-admins too.
+- **Untrusted text**: title, detail, YAML, alias, error messages and ids are only ever text nodes (an id is also set as an inert
+  `data-*` attribute with `setAttribute`); pattern, state and error code are mapped through fixed lists before they reach a class
+  name or a text key. `habits-view.test.js` renders `<img onerror>` in all of them through the real `patch()` and a fake DOM, and
+  `habits.js`, `habits-view.js`, `habits-section.js` and `clipboard.js` are guarded against `innerHTML` and friends.
+- **Existing code touched**: `ai-fix-section.js` lost its private `copyText` (now `clipboard.js`, identical code);
+  `insights.js`, `insights-view.js`, `insights-controller.js` (the `habits` section, `refresh()`, the forget text), `actions.js`.
+- **Harness**: `new MockBackend({ habits: true })` switches the feature on and seeds three ideas (routine with window, follow-up,
+  switch back with delay), a `created` and an `undone` record and `learned.habits` (120 entities, 28 days). Without the option
+  the mock is a 0.3 backend (no `features.habits`), which keeps the older tests unchanged. `index.html` passes it, makes create
+  1 s, undo 0.6 s and scan 1.5 s slow, adds a "habits" learning checkbox (`?habits=off` presets it) and a "Habits" select that
+  makes create / undo fail with a code (`?habitsfail=stale`) or the scan answer with `no_recorder` / `no_history` / `failed`.
+  Each scan finds one more idea (the second one has a pattern the UI does not know), then "Nothing new". Admin box = non-admin view.
+
+Open questions for the backend
+1. Does `habits/create` return `created.alias`? (Used in the toast; falls back to the idea's own alias.)
+2. After `exists` or `blocked`, does the idea leave `insights/get`? (The frontend keeps the card and the error until a refetch says so.)
+3. Is `learned.habits` (including `created`) part of `insights/get` for non-admins?
+4. What do `days` / `of` count for `follow_up` and `switch_back`? (Read as days.)
+5. `insights/get` is refetched when `settings.insights_open` changes; switching `habits` on or off with no open ideas does not change
+   that number, so an open Insights tab shows the old state until it is reopened (true for every learning feature, not new).

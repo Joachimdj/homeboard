@@ -58,6 +58,10 @@ class AutomationEditError(HomeAssistantError):
     """An automation could not be read, validated or written."""
 
 
+class AutomationGone(AutomationEditError):
+    """The automation is not in the file (any more)."""
+
+
 class AutomationChanged(AutomationEditError):
     """The automation in the file is not the one the caller looked at."""
 
@@ -379,12 +383,19 @@ def _backup_path(hass: HomeAssistant, auto_id: str) -> Path:
     return Path(hass.config.path(BACKUP_DIR)) / f"automations-{stamp}-{safe}-{unique}.yaml"
 
 
+MAX_BACKUPS = 50
+
+
 def _copy_file(source: str, target: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     if Path(source).exists():
         shutil.copy2(source, target)
     else:
         target.write_text("[]\n", encoding="utf-8")
+    old = sorted(target.parent.glob("automations-*.yaml"), key=lambda p: p.stat().st_mtime)
+    for path in old[:-MAX_BACKUPS]:  # keep the newest ones, never the one just made
+        if path != target:
+            path.unlink(missing_ok=True)
 
 
 async def async_validate(hass: HomeAssistant, auto_id: str, config: dict[str, Any]) -> None:
@@ -473,3 +484,61 @@ async def async_restore_automation(
 async def async_reload(hass: HomeAssistant, auto_id: str) -> None:
     """Reload one automation after its file changed."""
     await hass.services.async_call("automation", "reload", {"id": auto_id}, blocking=True)
+
+
+# ------------------------------------------------------------------ creating and removing (habit ideas)
+
+
+def new_automation_id() -> str:
+    """An id like the ones Home Assistant's own editor makes (milliseconds since the epoch)."""
+    return str(int(datetime.now().timestamp() * 1000))
+
+
+async def async_add_automation(
+    hass: HomeAssistant, config: dict[str, Any]
+) -> tuple[str, WriteResult]:
+    """Append a NEW automation to ``automations.yaml`` (backup first). Returns ``(id, WriteResult)``.
+
+    The caller has validated ``config``. Reloading and switching it off are separate steps.
+    """
+    path = hass.config.path(AUTOMATION_FILE)
+    async with _LOCK:
+        if await hass.async_add_executor_job(_has_tags, path):
+            raise AutomationEditError(TAGS_REASON)
+        items = await hass.async_add_executor_job(_read, path)
+        taken = {str(i.get("id")) for i in items}
+        auto_id = new_automation_id()
+        while auto_id in taken:
+            auto_id = str(int(auto_id) + 1)
+        backup = _backup_path(hass, auto_id)
+        await hass.async_add_executor_job(_copy_file, path, backup)
+        items.append(order_config(auto_id, config))
+        await hass.async_add_executor_job(_write, path, items)
+        written = await hass.async_add_executor_job(_read, path)
+        now = next((i for i in written if str(i.get("id")) == auto_id), items[-1])
+    return auto_id, WriteResult(backup, config_hash(now))
+
+
+async def async_remove_automation(
+    hass: HomeAssistant, auto_id: str, expected_fingerprint: str | None = None
+) -> Path:
+    """Remove one automation from ``automations.yaml`` (backup first); returns the backup.
+
+    With ``expected_fingerprint`` the automation must still be the one that was written, otherwise a person's
+    later edit would be thrown away. Removing the entity from the registry is the caller's job.
+    """
+    path = hass.config.path(AUTOMATION_FILE)
+    async with _LOCK:
+        if await hass.async_add_executor_job(_has_tags, path):
+            raise AutomationEditError(TAGS_REASON)
+        items = await hass.async_add_executor_job(_read, path)
+        index = next((n for n, i in enumerate(items) if str(i.get("id")) == auto_id), None)
+        if index is None:
+            raise AutomationGone("The automation is not in automations.yaml any more")
+        if expected_fingerprint is not None and config_hash(items[index]) != expected_fingerprint:
+            raise AutomationChanged("The automation was edited after it was created")
+        backup = _backup_path(hass, auto_id)
+        await hass.async_add_executor_job(_copy_file, path, backup)
+        del items[index]
+        await hass.async_add_executor_job(_write, path, items)
+    return backup

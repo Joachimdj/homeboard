@@ -89,7 +89,8 @@
           "learn_patterns": "Find gentagne opgaver og foreslå tilbagevendende opgaver",
           "learn_workload": "Arbejdsbyrde og hastighed",
           "learn_health": "Sensorrytmer og støjende fejl",
-          "learn_rhythm": "Hverdagsrytme (hjemme/ude pr. time)"
+          "learn_rhythm": "Hverdagsrytme (hjemme/ude pr. time)",
+          "learn_habits": "Vaneidéer: foreslå automationer ud fra hvordan lys, kontakter og sensorer bruges (aldrig noget med alarmen, låse eller sirener)"
         }
       },
       "ai": {
@@ -233,7 +234,8 @@
         "patterns": "Mønstre",
         "workload": "Arbejdsbyrde",
         "health": "Sundhed",
-        "rhythm": "Hverdagsrytme"
+        "rhythm": "Hverdagsrytme",
+        "habits": "Vaneidéer"
       }
     }
   },
@@ -773,6 +775,11 @@
           "description": "Noget AI'en bør vide (højst 500 tegn)."
         }
       }
+    },
+    "scan_habits": {
+      "name": "Scan efter vaner",
+      "description": "Læser recorderens historik og leder efter vaner, der kunne blive til automationer (lys, kontakter, ventilatorer, gardiner og bevægelses- / dørsensorer). Idéerne lander i Homeboards indbakke (Indsigt). Kræver at vaneidéer er slået til i indstillingerne. Der oprettes intet.",
+      "fields": {}
     },
     "add_checklist_item": {
       "name": "Tilføj tjeklistepunkt",

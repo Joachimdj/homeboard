@@ -3,6 +3,7 @@
 
 import { avatar, emptyState, icon, labelChip } from "./components.js";
 import { h } from "./dom.js";
+import { splitSuggestions } from "./habits.js";
 import { t, tn } from "./i18n.js";
 import { personName } from "./indexes.js";
 import {
@@ -140,7 +141,11 @@ function healthBody(learned) {
   ];
 }
 
-const BODIES = { defaults: defaultsBody, workload: workloadBody, rhythm: rhythmBody, health: healthBody };
+function habitsBody() {
+  return h("p.muted.small", t("insights.habits.forget_note"));
+}
+
+const BODIES = { defaults: defaultsBody, workload: workloadBody, rhythm: rhythmBody, health: healthBody, habits: habitsBody };
 
 function featureCard(feature, ctx) {
   const learned = ctx.data.learned?.[feature];
@@ -176,17 +181,19 @@ export function renderInsights(ctx) {
   if (!controller.data) return h("div.loading", { role: "status" }, t("loading"));
   const data = controller.data;
   const features = data.features || {};
+  const { ideas, others } = splitSuggestions(data.suggestions); // ideas = the inbox (kind automation), others as before
   const cards = [
     ...LEARNED_FEATURES.filter((f) => features[f]).map((f) => featureCard(f, { ...ctx, data })),
     features.patterns ? patternsCard(ctx) : null,
   ];
   return h(
     "div.insights",
+    controller.habits.render(data, ideas, ctx.isAdmin),
     h(
       "section.panel-section.suggestions",
       { key: "suggestions" },
-      h("h3", icon("mdi:lightbulb-on-outline"), t("insights.title"), h("span.count", data.suggestions.length)),
-      data.suggestions.length ? h("div.suggestion-list", data.suggestions.map((s) => suggestionCard(s, ctx))) : h("p.muted", t("insights.none")),
+      h("h3", icon("mdi:lightbulb-on-outline"), t("insights.title"), h("span.count", others.length)),
+      others.length ? h("div.suggestion-list", others.map((s) => suggestionCard(s, ctx))) : h("p.muted", t("insights.none")),
     ),
     h(
       "section.panel-section.learned",

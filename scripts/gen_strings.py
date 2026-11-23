@@ -397,6 +397,12 @@ S["ai_analyze"] = (
     ],
 )
 
+S["scan_habits"] = (
+    "Scan for habits",
+    "Read the recorder history and look for habits that could become automations (lights, switches, fans, covers and motion / door sensors). The ideas land in the Homeboard inbox (Insights). Needs habit ideas switched on in the options. Nothing is created.",
+    [],
+)
+
 S["add_checklist_item"] = (
     "Add checklist item",
     "Add an item to the checklist of an issue.",
@@ -455,7 +461,8 @@ S["forget_learning"] = (
             "Feature",
             "Leave empty for everything.",
             sel_select(
-                ["defaults", "patterns", "workload", "health", "rhythm"], "learning_feature"
+                ["defaults", "patterns", "workload", "health", "rhythm", "habits"],
+                "learning_feature",
             ),
             False,
             "rhythm",
@@ -590,6 +597,7 @@ strings = {
                     "learn_workload": "Workload and speed",
                     "learn_health": "Sensor rhythms and noisy faults",
                     "learn_rhythm": "Everyday rhythm (home / away by hour)",
+                    "learn_habits": "Habit ideas: suggest automations from how lights, switches and sensors are used (never anything with the alarm, locks or sirens)",
                 },
             },
             "ai": {
@@ -678,6 +686,7 @@ strings = {
                 "workload": "Workload",
                 "health": "Health",
                 "rhythm": "Everyday rhythm",
+                "habits": "Habit ideas",
             }
         },
     },
@@ -711,6 +720,7 @@ icons = {
             "run_recurring": "mdi:calendar-check",
             "scan_health": "mdi:stethoscope",
             "ai_analyze": "mdi:robot-outline",
+            "scan_habits": "mdi:chart-timeline-variant",
             "add_checklist_item": "mdi:checkbox-marked-outline",
             "check_item": "mdi:check-circle-outline",
             "remove_checklist_item": "mdi:checkbox-blank-off-outline",
@@ -864,6 +874,10 @@ SVC_DA = {
         "Glem det lærte",
         "Glemmer hvad en læringsfunktion har gemt (sensorrytmer, hjemme/ude-rytme, afviste forslag). Standardværdier, mønstre og arbejdsbyrde beregnes live ud fra tavlen.",
     ),
+    "scan_habits": (
+        "Scan efter vaner",
+        "Læser recorderens historik og leder efter vaner, der kunne blive til automationer (lys, kontakter, ventilatorer, gardiner og bevægelses- / dørsensorer). Idéerne lander i Homeboards indbakke (Indsigt). Kræver at vaneidéer er slået til i indstillingerne. Der oprettes intet.",
+    ),
     "ai_analyze": (
         "Analysér en opgave med AI",
         "Beder AI Task-entiteten om at stille en diagnose på en smart home-opgave og foreslå rettelser (AI-rettelse). Den foreslår kun: en administrator anvender forslaget i Homeboard-panelet. Kræver at AI-rettelse er slået til i indstillingerne.",
@@ -958,6 +972,7 @@ da["options"]["step"] = {
             "learn_workload": "Arbejdsbyrde og hastighed",
             "learn_health": "Sensorrytmer og støjende fejl",
             "learn_rhythm": "Hverdagsrytme (hjemme/ude pr. time)",
+            "learn_habits": "Vaneidéer: foreslå automationer ud fra hvordan lys, kontakter og sensorer bruges (aldrig noget med alarmen, låse eller sirener)",
         },
     },
     "ai": {
@@ -1045,6 +1060,7 @@ da["selector"] = {
             "workload": "Arbejdsbyrde",
             "health": "Sundhed",
             "rhythm": "Hverdagsrytme",
+            "habits": "Vaneidéer",
         }
     },
 }

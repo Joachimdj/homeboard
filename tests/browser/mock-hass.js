@@ -121,6 +121,8 @@ const GLYPHS = {
   "mdi:filter-off-outline": "⨯", "mdi:chart-box-outline": "▤", "mdi:view-column-outline": "\u2016", "mdi:tray-full": "☰", "mdi:format-list-bulleted": "≡",
   "mdi:check": "✓", "mdi:arrow-up": "↑", "mdi:arrow-down": "↓", "mdi:delete-outline": "✗", "mdi:archive-outline": "▣", "mdi:link-variant": "∞",
   "mdi:open-in-new": "↗", "mdi:pencil-outline": "✎", "mdi:play-circle-outline": "▶", "mdi:chevron-right": "›",
+  "mdi:inbox-arrow-down": "⇩", "mdi:motion-sensor": "≋", "mdi:timer-outline": "◷", "mdi:code-braces": "{}", "mdi:toggle-switch-off-outline": "◐",
+  "mdi:magnify-scan": "⌖", "mdi:history": "↺",
   "mdi:check-circle-outline": "✓", "mdi:help-circle-outline": "?", "mdi:folder-outline": "▢", "mdi:text-box-search-outline": "⌕", "mdi:view-dashboard-outline": "▦",
 };
 

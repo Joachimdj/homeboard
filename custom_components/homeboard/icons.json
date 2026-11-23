@@ -54,6 +54,9 @@
     "ai_analyze": {
       "service": "mdi:robot-outline"
     },
+    "scan_habits": {
+      "service": "mdi:chart-timeline-variant"
+    },
     "add_checklist_item": {
       "service": "mdi:checkbox-marked-outline"
     },

@@ -6,11 +6,14 @@ import { clamp } from "./util.js";
 
 export const FEATURES = ["defaults", "patterns", "workload", "health", "rhythm"];
 
+/** Version 0.4 adds `habits`. `FEATURES` stays the 0.2 list; "is anything switched on" looks at all of them. */
+export const ALL_FEATURES = [...FEATURES, "habits"];
+
 /** Features whose learned data is shown (patterns only produces suggestions). */
-export const LEARNED_FEATURES = ["defaults", "workload", "rhythm", "health"];
+export const LEARNED_FEATURES = ["defaults", "workload", "rhythm", "health", "habits"];
 
 export function enabledFeatures(learning) {
-  return FEATURES.filter((feature) => learning?.[feature]);
+  return ALL_FEATURES.filter((feature) => learning?.[feature]);
 }
 
 export function learningEnabled(settings) {

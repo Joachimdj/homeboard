@@ -9,6 +9,7 @@ import voluptuous as vol
 from homeassistant.auth.permissions.const import POLICY_READ
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import Unauthorized
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
@@ -837,8 +838,10 @@ def _learning(m: HomeboardData) -> Any:
 def ws_insights_get(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Return suggestions and what has been learned."""
-    _run(lambda m, c, msg, actor: _learning(m).insights())(hass, connection, msg)
+    """Return suggestions and what has been learned (automation ideas are for administrators only)."""
+    _run(lambda m, c, msg, actor: _learning(m).insights(admin=c.user.is_admin))(
+        hass, connection, msg
+    )
 
 
 @websocket_api.websocket_command(
@@ -862,6 +865,8 @@ def ws_insights_dismiss(
     """Dismiss a suggestion."""
 
     def handler(m: HomeboardData, c: Any, msg: dict[str, Any], actor: str | None) -> dict[str, str]:
+        if not c.user.is_admin and _learning(m).kind_of(msg["suggestion_id"]) == "automation":
+            raise Unauthorized(context=c.context(msg))
         _learning(m).dismiss(msg["suggestion_id"])
         return {"dismissed": msg["suggestion_id"]}
 
@@ -872,7 +877,9 @@ def ws_insights_dismiss(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "homeboard/insights/forget",
-        vol.Optional("feature"): vol.In(("defaults", "patterns", "workload", "health", "rhythm")),
+        vol.Optional("feature"): vol.In(
+            ("defaults", "patterns", "workload", "health", "rhythm", "habits")
+        ),
     }
 )
 @callback
@@ -1023,6 +1030,75 @@ ws_ai_undo = _ai_proposal_command("undo", "undo")
 ws_ai_dismiss = _ai_proposal_command("dismiss", "dismiss")
 
 
+def _habits(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> Any:
+    """Return the habits scanner or answer with an error."""
+    manager: HomeboardData | None = hass.data.get(DOMAIN)
+    if manager is None or manager.habits is None:
+        connection.send_error(msg["id"], "not_loaded", "Homeboard is not set up")
+        return None
+    return manager
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command({vol.Required("type"): "homeboard/habits/scan"})
+@websocket_api.async_response
+async def ws_habits_scan(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Scan the history for habits now."""
+    manager = _habits(hass, connection, msg)
+    if manager is None:
+        return
+    if not manager.habits.enabled:
+        connection.send_error(msg["id"], "habits_disabled", "Habits is switched off")
+        return
+    connection.send_result(msg["id"], await manager.habits.async_scan())
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {vol.Required("type"): "homeboard/habits/create", vol.Required("suggestion_id"): cv.string}
+)
+@websocket_api.async_response
+async def ws_habits_create(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Create the (switched off) automation of an idea."""
+    manager = _habits(hass, connection, msg)
+    if manager is None:
+        return
+    try:
+        created = await manager.habits.async_create(
+            msg["suggestion_id"], manager.person_for_user(connection.user.id)
+        )
+    except HomeboardError as err:
+        connection.send_error(msg["id"], err.code, str(err))
+        return
+    connection.send_result(msg["id"], {"created": created})
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {vol.Required("type"): "homeboard/habits/undo", vol.Required("created_id"): cv.string}
+)
+@websocket_api.async_response
+async def ws_habits_undo(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Remove an automation that was created from an idea."""
+    manager = _habits(hass, connection, msg)
+    if manager is None:
+        return
+    try:
+        created = await manager.habits.async_undo(msg["created_id"])
+    except HomeboardError as err:
+        connection.send_error(msg["id"], err.code, str(err))
+        return
+    connection.send_result(msg["id"], {"created": created})
+
+
 COMMANDS = (
     ws_get,
     ws_subscribe,
@@ -1064,6 +1140,9 @@ COMMANDS = (
     ws_ai_apply,
     ws_ai_undo,
     ws_ai_dismiss,
+    ws_habits_scan,
+    ws_habits_create,
+    ws_habits_undo,
 )
 
 

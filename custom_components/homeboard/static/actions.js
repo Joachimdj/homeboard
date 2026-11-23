@@ -193,6 +193,22 @@ export const actions = {
     return store.call("homeboard/ai/dismiss", { issue_id: issueId, proposal_id: proposalId });
   },
 
+  /**
+   * Habits (PROTOCOL 12.3), administrators only. Plain calls: the Habits section shows the error itself
+   * (inline and as a toast) because it needs the code. `scan` can take several seconds.
+   */
+  habitsScan() {
+    return store.call("homeboard/habits/scan");
+  },
+
+  habitsCreate(suggestionId) {
+    return store.call("homeboard/habits/create", { suggestion_id: suggestionId });
+  },
+
+  habitsUndo(createdId) {
+    return store.call("homeboard/habits/undo", { created_id: createdId });
+  },
+
   /** Plain read (no toast on failure is wanted by callers that handle it themselves). */
   getIssue(issueId) {
     return store.call("homeboard/issue/get", { issue_id: issueId });

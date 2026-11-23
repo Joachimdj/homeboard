@@ -424,3 +424,58 @@ activity line on the issue.
 `ai_fix_enabled` (default false), `ai_fix_entity` (an `ai_task.*` entity; empty = the preferred one, else the only one),
 `ai_fix_allow_protected` (default false), `ai_fix_daily_limit` (default 20), `health_automations` (default false: the
 detector for automations that use missing entities, key `health:automation:<automation entity id>`, section 3b).
+
+## 12. Version 0.4 additions (Habits: automation ideas in the inbox)
+
+Design: `docs/DESIGN-0.4.md`. Administrators only for everything that creates or removes something.
+
+### 12.1 Suggestions of kind `automation` (in `insights/get` `suggestions`, the inbox)
+
+```jsonc
+{ "id": "habit:time:light.hall:on:weekdays", "kind": "automation",
+  "title": "Turn on Hall light at 06:35 on weekdays?",
+  "detail": "It turned on on 17 of the last 21 weekdays between 06:28 and 06:42 (assuming no automation did it).",
+  "evidence": { "pattern": "routine | follow_up | switch_back", "days": 17, "of": 21, "share": 0.81,
+                "window": ["06:28", "06:42"], "samples": 17 },
+  "proposal": { "alias": "Hall light on at 06:35 (weekdays)", "description": "Suggested by Homeboard from habits ...",
+                "entity_id": "light.hall", "trigger_entity": null, "yaml": "alias: ...\ntriggers: ..." } }
+```
+
+`proposal.yaml` is for display and "copy"; the machine config stays on the server (the client only sends the
+suggestion id). `evidence.window` is present for `routine`, `evidence.delay_minutes` for `switch_back`. `days` / `of` count days for every
+pattern (days with a match out of days with data / activations); `samples` / `out_of` count cases (follow_up, switch_back).
+An idea that `habits/create` refuses with `exists` leaves the inbox at once (it is already done); one refused with `blocked`
+stays until the next scan. Suggestions of kind `automation` and `learned.habits` (including `created`) are only in `insights/get` for **administrators**
+(a non-administrator gets the page without them, `settings.insights_open` does not count them, and `insights/dismiss` on one
+is `unauthorized`); the three `habits/*` commands are administrator-only too. `insights/forget` and `forget_learning` accept
+`habits`.
+Pattern names are for icons / grouping; unknown patterns render with the generic text.
+
+### 12.2 `insights/get` additions
+
+`features.habits` (bool), `learned.habits` (only when the feature is on):
+`{ last_scan: "<iso>|null", scanned_entities: 120, days: 28, error: null | "no_recorder" | "no_history" | "failed",
+   created: [ Created ] }`. `settings.learning.habits` (bool) and `settings.insights_open` count these suggestions too.
+
+**Created** (undoable list, newest first, at most 20; `habits/create` returns one of these, with the automation's `alias`): `{ id, suggestion_id, auto_id, entity_id, alias, ts,
+state: "created | undone", edit_url: "/config/automation/edit/<auto_id>" }`. A created automation is **off**.
+
+### 12.3 WebSocket (admin only)
+
+| type | params | result |
+|------|--------|--------|
+| `homeboard/habits/scan` | - | `{ scanned, found, days, error }` (runs now; can take several seconds) |
+| `homeboard/habits/create` | `suggestion_id` | `{ created: Created }` |
+| `homeboard/habits/undo` | `created_id` | `{ created: Created }` (state `undone`) |
+
+`insights/accept` on a suggestion of kind `automation` is refused with code `use_habits_create`. Error codes of
+create / undo: `habits_disabled`, `not_found`, `exists` (an automation covers it now), `blocked` (protected or
+rejected by validation; the message says why), `not_editable` (automations.yaml cannot be written), `stale`
+(undo refused: the automation was edited), `backup_missing`, `create_failed` (it did not load; rolled back).
+Create also fires the bus event `homeboard_habit_automation_created` (`suggestion_id`, `auto_id`, `entity_id`).
+
+### 12.4 Service and options
+
+Service `scan_habits` (response `{ scanned, found, days, error }`). Option `learn_habits` (default **false**).
+The learning `forget` feature `habits` clears the cached candidates and the dismissed habit ideas (not the
+automations that were created).

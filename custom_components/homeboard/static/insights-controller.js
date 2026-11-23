@@ -2,6 +2,7 @@
 // / dismiss suggestions, forget learned data (admin).
 
 import { actions } from "./actions.js";
+import { HabitsSection } from "./habits-section.js";
 import { t } from "./i18n.js";
 import { overlay } from "./overlay.js";
 import { openProjectSettings } from "./project-dialog.js";
@@ -14,6 +15,12 @@ export class InsightsController {
     this.loading = false;
     this.error = null;
     this.loadedOpen = null; // settings.insights_open when the data was fetched
+    this.habits = new HabitsSection({ insights: this, requestRender }); // the inbox of automation ideas (0.4)
+  }
+
+  /** Fetch again now (after Create, Undo, Scan, ...). */
+  refresh() {
+    return this.load(this.loadedOpen);
   }
 
   /** Called on every render of the tab: fetch once, and again when the number of open suggestions changed. */
@@ -71,7 +78,7 @@ export class InsightsController {
   async forget(feature) {
     const ok = await overlay.confirm({
       title: feature ? t("insights.forget_title", { feature: t(`insights.feature.${feature}`) }) : t("insights.forget_all"),
-      message: feature ? t("insights.forget_confirm", { feature: t(`insights.feature.${feature}`) }) : t("insights.forget_all_confirm"),
+      message: feature === "habits" ? t("insights.forget_confirm_habits") : feature ? t("insights.forget_confirm", { feature: t(`insights.feature.${feature}`) }) : t("insights.forget_all_confirm"),
       confirmLabel: t("insights.forget"),
       danger: true,
     });

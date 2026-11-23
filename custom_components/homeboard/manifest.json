@@ -5,6 +5,7 @@
     "ai_task",
     "automation",
     "camera",
+    "recorder",
     "trace"
   ],
   "codeowners": [
@@ -25,5 +26,5 @@
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/Joachimdj/homeboard/issues",
   "single_config_entry": true,
-  "version": "0.3.0"
+  "version": "0.4.0"
 }

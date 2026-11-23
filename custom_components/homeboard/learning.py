@@ -36,10 +36,17 @@ from .presence import is_home
 if TYPE_CHECKING:
     from .data import HomeboardData
 
+
+class UseHabitsCreate(InvalidError):
+    """Automation ideas are created with ``homeboard/habits/create``, not accepted like other ideas."""
+
+    code = "use_habits_create"
+
+
 _LOGGER = logging.getLogger(__name__)
 
 TICK = timedelta(minutes=5)
-FEATURES = ("defaults", "patterns", "workload", "health", "rhythm")
+FEATURES = ("defaults", "patterns", "workload", "health", "rhythm", "habits")
 MAX_TRACKED_SENSORS = 1500
 MIN_UPDATES_FOR_SILENCE = 12
 MAX_NORMAL_MINUTES = 720
@@ -179,9 +186,13 @@ class LearningEngine:
 
     # ------------------------------------------------------------------ suggestions
 
-    def open_count(self) -> int:
-        """Return the number of open suggestions (for the badge)."""
-        return len(self._suggestions)
+    def open_count(self, *, admin: bool = True) -> int:
+        """Return the number of open suggestions (for the badge). Automation ideas are for administrators."""
+        return sum(1 for s in self._suggestions if admin or s["kind"] != "automation")
+
+    def kind_of(self, suggestion_id: str) -> str | None:
+        """Return the kind of an open suggestion (``None`` if there is no such one)."""
+        return next((s["kind"] for s in self._suggestions if s["id"] == suggestion_id), None)
 
     def refresh(self, *, signal: bool = True) -> None:
         """Recompute the suggestion list; signal the UI when the count changed."""
@@ -205,6 +216,8 @@ class LearningEngine:
             found += self._health_suggestions()
         if self.enabled("rhythm") and self.manager.options.get(CONF_DIGEST_ENABLED, False):
             found += self._digest_suggestions()
+        if self.enabled("habits") and self.manager.habits is not None:
+            found += self.manager.habits.suggestions()
         dismissed = set(self.data.get("dismissed", []))
         return [item for item in found if item["id"] not in dismissed]
 
@@ -299,6 +312,8 @@ class LearningEngine:
                     )
         elif suggestion["kind"] == "digest_time":
             self.data.setdefault("digest_times", {})[proposal["person"]] = proposal["time"]
+        elif suggestion["kind"] == "automation":
+            raise UseHabitsCreate("Create an automation idea with homeboard/habits/create")
         else:  # pragma: no cover - kinds are produced above
             raise InvalidError("Unknown suggestion kind")
         self._dismiss_id(suggestion_id)
@@ -330,7 +345,12 @@ class LearningEngine:
             raise InvalidError(f"feature must be one of {', '.join(FEATURES)}")
         cleared: list[str] = []
         data = self.data
-        prefixes = {"patterns": "recurring:", "health": "health_ignore:", "rhythm": "digest_time:"}
+        prefixes = {
+            "patterns": "recurring:",
+            "health": "health_ignore:",
+            "rhythm": "digest_time:",
+            "habits": "habit:",
+        }
         dismissed = data.get("dismissed", [])
         if feature is None:
             kept: list[str] = []
@@ -343,6 +363,12 @@ class LearningEngine:
         data["dismissed"] = kept
         if feature in (None, "health") and data.pop("health", None) is not None:
             cleared.append("sensor rhythms and fault history")
+        if (
+            feature in (None, "habits")
+            and self.manager.habits is not None
+            and self.manager.habits.forget()
+        ):
+            cleared.append("habit ideas")
         if feature in (None, "rhythm"):
             if data.pop("rhythm", None) is not None:
                 cleared.append("home / away rhythm")
@@ -489,8 +515,8 @@ class LearningEngine:
 
     # ------------------------------------------------------------------ insights page
 
-    def insights(self) -> dict[str, Any]:
-        """Return everything the Insights page shows."""
+    def insights(self, *, admin: bool = True) -> dict[str, Any]:
+        """Return everything the Insights page shows (automation ideas only to administrators)."""
         features = self.features()
         manager = self.manager
         learned: dict[str, Any] = {}
@@ -530,7 +556,14 @@ class LearningEngine:
                 "silent": self.silent_candidates()[:LISTED],
                 "flapping": flapping[:LISTED],
             }
-        return {"features": features, "suggestions": list(self._suggestions), "learned": learned}
+        if admin and features["habits"] and self.manager.habits is not None:
+            learned["habits"] = self.manager.habits.status()
+        suggestions = [
+            {**s, "proposal": {k: v for k, v in s["proposal"].items() if not k.startswith("_")}}
+            for s in self._suggestions
+            if admin or s["kind"] != "automation"
+        ]
+        return {"features": features, "suggestions": suggestions, "learned": learned}
 
     def _summary_for(self, key: str) -> str:
         for issue in sorted(self.manager.issues.values(), key=lambda i: i["number"], reverse=True):

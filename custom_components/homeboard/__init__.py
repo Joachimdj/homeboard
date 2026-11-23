@@ -17,6 +17,7 @@ from .const import CONF_STARTER_PROJECT, DOMAIN
 from .data import HomeboardData
 from .files import FileStore, async_register_views
 from .frontend import async_register_frontend, async_unregister_frontend
+from .habits_scan import HabitsScanner
 from .health import HealthMonitor
 from .learning import LearningEngine
 from .notify import async_setup_notifications
@@ -69,6 +70,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HomeboardConfigEntry) ->
     manager.push = PushNotifier(hass, manager)
     manager.learning = LearningEngine(hass, manager)
     manager.ai = AiFixEngine(hass, manager)
+    manager.habits = HabitsScanner(hass, manager)
 
     await async_register_frontend(hass, dict(entry.options), manager.version)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -77,6 +79,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HomeboardConfigEntry) ->
     manager.health.async_start()
     manager.push.async_start()
     manager.learning.async_start()
+    manager.habits.async_start()
     async_setup_notifications(hass, entry)
     return True
 
@@ -95,6 +98,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: HomeboardConfigEntry) -
             manager.learning.async_stop()
         if manager.ai:
             manager.ai.async_stop()
+        if manager.habits:
+            manager.habits.async_stop()
         async_unregister_frontend(hass)
         await async_unload_assist(hass, entry)
         await manager.async_save_now()

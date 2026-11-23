@@ -4,16 +4,17 @@
 
 import { AI_COMMANDS, aiSummary, defaultAiSettings, newAiState, seedAi } from "./mock-ai.js";
 import { FileStore, MINIMAL_PDF, demoPicture } from "./mock-files.js";
+import { HABITS_COMMANDS, forgetHabits, habitsLearned, newHabitsState, seedHabits } from "./mock-habits.js";
 import { HEALTH_LEARNED, defaultsFrom, onlyMissing, rhythmGrid, suggestFor, workloadFrom } from "./mock-insights.js";
 
 const PRIORITIES = ["highest", "high", "medium", "low", "lowest"];
 const TYPES = ["task", "bug", "story", "epic"];
 const CATEGORIES = ["todo", "in_progress", "done"];
 const GAP = 1000;
-const ADMIN_ONLY = /^(project\/(create|update|delete)|status\/|health\/scan|insights\/forget|ai\/)/;
+const ADMIN_ONLY = /^(project\/(create|update|delete)|status\/|health\/scan|insights\/forget|ai\/|habits\/)/;
 const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"];
 const FEATURES = ["defaults", "patterns", "workload", "health", "rhythm"];
-const SUGGESTION_FEATURE = { recurring: "patterns", health_ignore: "health", digest_time: "rhythm" };
+const SUGGESTION_FEATURE = { recurring: "patterns", health_ignore: "health", digest_time: "rhythm", automation: "habits" };
 
 const TEMPLATES = {
   household: [["Backlog", "todo", true, null], ["To do", "todo", false, null], ["In progress", "in_progress", false, 3], ["Done", "done", false, null]],
@@ -152,8 +153,10 @@ function nextOccurrence(dueString, repeat) {
 // ---- backend -----------------------------------------------------------------------
 
 export class MockBackend {
-  constructor({ seed = true, now = () => new Date() } = {}) {
+  /** habits: also switch the 0.4 feature on and seed its ideas (off = a 0.3 backend: no `features.habits` at all). */
+  constructor({ seed = true, now = () => new Date(), habits = false } = {}) {
     this.now = now;
+    this.withHabits = habits;
     this.counter = 0;
     this.listeners = new Set();
     this.settings = {
@@ -161,11 +164,12 @@ export class MockBackend {
       panel_title: "Board",
       auto_archive_done_days: 30,
       health_enabled: true,
-      learning: { defaults: true, patterns: true, workload: true, health: true, rhythm: false },
+      learning: { defaults: true, patterns: true, workload: true, health: true, rhythm: false, ...(habits ? { habits: true } : {}) },
       attachments: { enabled: true, max_mb: 10 },
       ai_fix: defaultAiSettings(), // administrators only, see payload()
     };
     this.ai = newAiState(dateString(now()));
+    this.habits = newHabitsState();
     this.cameras = [
       { entity_id: "camera.front_door", name: "Front door" },
       { entity_id: "camera.garden", name: "Garden" },
@@ -507,12 +511,14 @@ export class MockBackend {
       };
     }
     if (learning.health) learned.health = gone("health") ? { tracked_sensors: 0, silent: [], flapping: [] } : structuredClone(HEALTH_LEARNED);
+    if (learning.habits) learned.habits = habitsLearned(this);
     return learned;
   }
 }
 
 const COMMANDS = {
   ...AI_COMMANDS,
+  ...HABITS_COMMANDS,
 
   get() {
     return this.payload();
@@ -814,6 +820,7 @@ const COMMANDS = {
 
   "insights/accept"({ suggestion_id }) {
     const suggestion = this.openSuggestions().find((s) => s.id === suggestion_id) || fail("not_found", `Suggestion ${suggestion_id} not found`);
+    if (suggestion.kind === "automation") fail("use_habits_create", "Use homeboard/habits/create for automation ideas");
     const result = { applied: true };
     if (suggestion.kind === "recurring") {
       const { project_id, ...fields } = suggestion.proposal;
@@ -841,9 +848,13 @@ const COMMANDS = {
   },
 
   "insights/forget"({ feature = null }) {
-    if (feature !== null && !FEATURES.includes(feature)) fail("invalid_format", `Unknown feature ${feature}`);
-    const forgotten = feature ? [feature] : [...FEATURES];
-    for (const name of forgotten) this.forgotten.add(name);
+    const known = "habits" in this.settings.learning ? [...FEATURES, "habits"] : FEATURES;
+    if (feature !== null && !known.includes(feature)) fail("invalid_format", `Unknown feature ${feature}`);
+    const forgotten = feature ? [feature] : [...known];
+    for (const name of forgotten) {
+      if (name === "habits") forgetHabits(this);
+      else this.forgotten.add(name);
+    }
     this.changed();
     return { forgotten };
   },
@@ -1039,4 +1050,5 @@ function seedDemo(backend) {
       proposal: { key: "health:offline:dev-irrigation", summary: "Offline: Garden irrigation controller" },
     },
   ];
+  if (backend.withHabits) seedHabits(backend); // 0.4: three automation ideas, one created and one undone record
 }

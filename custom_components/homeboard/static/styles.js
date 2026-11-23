@@ -334,8 +334,53 @@ export const panelCss = `
 .heat-legend { display: flex; align-items: center; gap: 3px; }
 .heat-legend .heat-cell { width: 22px; }
 .forget-all { display: flex; justify-content: flex-end; padding-top: 4px; }
+/* Habits: the inbox of automation ideas (0.4) */
+.inbox { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.inbox h3 { margin: 0; }
+.inbox h3 > ha-icon { color: var(--hb-accent); }
+.habit-intro, .habit-created p, .created-line, .habit-off p { margin: 0; }
+.habit-status { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 10px; background: var(--hb-field); }
+.habit-status-main { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.habit-status-line { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.habit-scan-live:empty { display: none; }
+.habit-scan-result { display: flex; align-items: flex-start; gap: 6px; margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+.habit-scan-result > ha-icon { color: var(--hb-success); }
+.habit-scan-result.error, .habit-scan-result.error > ha-icon { color: var(--hb-error); }
+.idea-list { align-items: start; }
+.idea-card { min-width: 0; }
+.idea-title, .idea-detail { min-width: 0; overflow-wrap: anywhere; }
+.idea-evidence { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.idea-yaml summary { display: flex; align-items: center; gap: 6px; min-height: 30px; color: var(--hb-accent); font-size: 13px; cursor: pointer; }
+.idea-yaml[open] summary { margin-bottom: 6px; }
+.yaml-box { max-height: 360px; overflow: auto; border: 1px solid var(--hb-line); border-radius: 8px; background: var(--hb-field); }
+pre.yaml { width: max-content; min-width: 100%; margin: 0; padding: 8px 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 12px; line-height: 1.5; white-space: pre; }
+.idea-note { display: flex; align-items: center; gap: 6px; }
+.habit-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; }
+.idea-yaml .habit-actions { margin-top: 8px; }
+.habit-confirm { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--hb-accent) 10%, transparent); }
+.habit-confirm-text { margin: 0; overflow-wrap: anywhere; }
+.habit-error { display: flex; align-items: flex-start; gap: 6px; margin: 0; color: var(--hb-error); font-size: 13px; overflow-wrap: anywhere; }
+.habit-error > ha-icon { margin-top: 1px; }
+.habit-off { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--hb-field); overflow-wrap: anywhere; }
+.habit-off > div { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.habit-created { display: flex; flex-direction: column; gap: 8px; }
+.habit-sub { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; font-size: 12px; color: var(--hb-muted); text-transform: uppercase; letter-spacing: .05em; }
+.created-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.created-row { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px 12px; border: 1px solid var(--hb-line); border-radius: 10px; }
+.created-row.muted-row { opacity: .7; }
+.created-main { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.created-alias { min-width: 0; overflow-wrap: anywhere; }
+.created-line { display: flex; align-items: center; gap: 6px; }
+.chip.state-created { background: color-mix(in srgb, var(--hb-success) 18%, transparent); color: color-mix(in srgb, var(--hb-success) 65%, var(--hb-text)); }
 @container insights (max-width: 520px) {
   .learn-grid, .suggestion-list { grid-template-columns: minmax(0, 1fr); }
+  /* Habits on a phone: 44px touch targets, buttons share the row, the YAML scrolls inside its own box */
+  .inbox .btn, .inbox .btn.small { min-height: 44px; padding: 0 14px; }
+  .idea-yaml summary { min-height: 44px; }
+  .habit-actions .btn { flex: 1 1 140px; }
+  .habit-confirm .habit-actions .btn { flex: 1 1 0; }
+  .habit-status-main .btn { flex: 1 1 100%; }
+  .yaml-box { max-height: 50vh; }
   .heat { grid-template-columns: 26px repeat(24, minmax(0, 1fr)); gap: 1px; }
   .heat-cell { height: 13px; }
   .heat-hour:nth-child(3n+3) { visibility: hidden; }

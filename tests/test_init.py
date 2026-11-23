@@ -266,6 +266,7 @@ async def test_options_files_learning_and_health_sections(hass, entry):
             "learn_workload": True,
             "learn_health": True,
             "learn_rhythm": True,
+            "learn_habits": True,
         },
     )
     await hass.async_block_till_done()
@@ -275,6 +276,7 @@ async def test_options_files_learning_and_health_sections(hass, entry):
         "workload": True,
         "health": True,
         "rhythm": True,
+        "habits": True,
     }
 
     flow = await open_section(hass, entry, "health")

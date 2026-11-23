@@ -7,7 +7,7 @@
 import { actions } from "./actions.js";
 import { NOTE_MAX, aiRev, canAnalyse, confirmKey, errorKey, replaceProposal, sectionVisible } from "./ai-fix.js";
 import { aiFixSection } from "./ai-fix-view.js";
-import { deepActiveElement } from "./dom.js";
+import { copyText } from "./clipboard.js";
 import { t } from "./i18n.js";
 import { overlay } from "./overlay.js";
 import { store } from "./store.js";
@@ -16,34 +16,6 @@ function messageOf(error) {
   if (error?.code === "unauthorized") return t("error.unauthorized");
   const key = errorKey(error?.code);
   return key ? t(key) : error?.message || t("error.generic");
-}
-
-/** navigator.clipboard only exists on https and localhost; a Home Assistant on plain http needs the old way. */
-async function copyText(text) {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    // fall through to the textarea trick
-  }
-  const previous = deepActiveElement();
-  try {
-    const area = document.createElement("textarea");
-    area.value = text;
-    area.setAttribute("readonly", "");
-    Object.assign(area.style, { position: "fixed", top: "0", left: "0", opacity: "0" });
-    document.body.append(area);
-    area.select();
-    const ok = document.execCommand("copy");
-    area.remove();
-    return ok;
-  } catch {
-    return false;
-  } finally {
-    previous?.focus?.({ preventScroll: true });
-  }
 }
 
 export class AiFixSection {

@@ -64,6 +64,16 @@
       <label><input type="checkbox" data-learn="workload" checked> workload</label>
       <label><input type="checkbox" data-learn="health" checked> health</label>
       <label><input type="checkbox" data-learn="rhythm"> rhythm</label>
+      <label><input type="checkbox" data-learn="habits" checked> habits</label>
+    </span>
+    <span>Habits:
+      <select id="habitsfail" aria-label="Habit calls fail with">
+        <option value="">calls work</option>
+        <option value="exists">create / undo fail: exists</option><option value="blocked">blocked</option><option value="not_editable">not_editable</option>
+        <option value="create_failed">create_failed</option><option value="habits_disabled">habits_disabled</option><option value="stale">stale (undo)</option>
+        <option value="backup_missing">backup_missing</option><option value="not_found">not_found</option><option value="strange_thing">unknown code</option>
+        <option value="scan:no_recorder">scan: no_recorder</option><option value="scan:no_history">scan: no_history</option><option value="scan:failed">scan: failed</option>
+      </select>
     </span>
     <label><input type="checkbox" id="attachments" checked> Attachments</label>
     <label>max <input type="number" id="maxmb" value="10" min="0.001" step="any" style="width:56px"> MB</label>
@@ -93,8 +103,10 @@
     import { MockHass } from "./mock-hass.js";
 
     const query = new URLSearchParams(location.search);
-    let backend = new MockBackend({ seed: !query.has("empty") });
+    let backend = new MockBackend({ seed: !query.has("empty"), habits: true });
     const mock = new MockHass(backend, { language: query.get("lang") || "en", dark: query.has("dark") });
+    // Habits calls that take a while (the real ones write automations.yaml, reload and read the recorder).
+    Object.assign(mock.extraLatency, { "homeboard/habits/create": 1000, "homeboard/habits/undo": 600, "homeboard/habits/scan": 1500 });
     window.mock = mock;
     window.backend = backend;
 
@@ -178,10 +190,15 @@
     $("aireason").onchange = (e) => { backend.ai.reason = e.target.value || null; backend.changed(); };
     $("aifail").onchange = (e) => { backend.ai.fail = e.target.checked; };
     $("aislow").onchange = (e) => { for (const type of ["homeboard/ai/preview", "homeboard/ai/analyze"]) mock.extraLatency[type] = e.target.checked ? 4000 : 0; };
+    $("habitsfail").onchange = (e) => {
+      const [kind, code] = e.target.value.includes(":") ? e.target.value.split(":") : ["call", e.target.value];
+      backend.habits.fail = kind === "call" && code ? code : null;
+      backend.habits.scanError = kind === "scan" ? code : null;
+    };
     $("expire").onclick = () => backend.files.expire();
     $("reset").onclick = () => {
-      const fresh = new MockBackend();
-      Object.assign(backend, { projects: fresh.projects, issues: fresh.issues, recurring: fresh.recurring, counter: fresh.counter, suggestions: fresh.suggestions, files: fresh.files, ai: fresh.ai });
+      const fresh = new MockBackend({ habits: true });
+      Object.assign(backend, { projects: fresh.projects, issues: fresh.issues, recurring: fresh.recurring, counter: fresh.counter, suggestions: fresh.suggestions, files: fresh.files, ai: fresh.ai, habits: fresh.habits });
       backend.handled = new Set();
       backend.forgotten = new Set();
       backend.changed();
@@ -190,6 +207,8 @@
     if (query.has("dark")) { $("dark").checked = true; document.documentElement.dataset.theme = "dark"; }
     if (query.get("lang")) { $("language").value = query.get("lang"); document.documentElement.lang = query.get("lang"); }
     if (query.has("kiosk")) $("kiosk").checked = true;
+    if (query.get("habits") === "off") { const box = document.querySelector('[data-learn="habits"]'); box.checked = false; box.onchange(); }
+    if (query.get("habitsfail")) { $("habitsfail").value = query.get("habitsfail"); $("habitsfail").onchange({ target: $("habitsfail") }); }
     if (query.has("nolearn")) for (const box of document.querySelectorAll("[data-learn]")) { box.checked = false; box.onchange(); }
     if (query.has("learn")) for (const feature of query.get("learn").split(",")) { const box = document.querySelector(`[data-learn="${feature}"]`); if (box) { box.checked = true; box.onchange(); } }
     if (query.get("aireason")) { $("aireason").value = query.get("aireason"); $("aireason").onchange({ target: $("aireason") }); }

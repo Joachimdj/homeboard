@@ -38,6 +38,7 @@ from .const import (
     SERVICE_REMOVE_CHECKLIST_ITEM,
     SERVICE_REMOVE_STATUS,
     SERVICE_RUN_RECURRING,
+    SERVICE_SCAN_HABITS,
     SERVICE_SCAN_HEALTH,
     SERVICE_SEND_DIGEST,
     SERVICE_SUGGEST,
@@ -386,6 +387,20 @@ async def _ai_analyze(
     return await manager.ai.analyze(issue["id"], call.data.get("note", ""), actor)
 
 
+async def _scan_habits(
+    manager: HomeboardData, call: ServiceCall, actor: str | None
+) -> dict[str, Any]:
+    if manager.habits is None:
+        raise ServiceValidationError("Habits is not running")
+    if call.context.user_id:  # an automation has no user; a person must be an administrator
+        user = await manager.hass.auth.async_get_user(call.context.user_id)
+        if user is None or not user.is_admin:
+            raise Unauthorized(context=call.context)
+    if not manager.habits.enabled:
+        raise ServiceValidationError("Habits is switched off in the Homeboard options")
+    return await manager.habits.async_scan()
+
+
 async def _scan_health(
     manager: HomeboardData, call: ServiceCall, actor: str | None
 ) -> dict[str, Any]:
@@ -605,7 +620,7 @@ SERVICES: tuple[tuple[str, Callable[..., Any], vol.Schema, bool], ...] = (
         vol.Schema(
             {
                 vol.Optional("feature"): vol.In(
-                    ("defaults", "patterns", "workload", "health", "rhythm")
+                    ("defaults", "patterns", "workload", "health", "rhythm", "habits")
                 )
             }
         ),
@@ -618,6 +633,7 @@ SERVICES: tuple[tuple[str, Callable[..., Any], vol.Schema, bool], ...] = (
         True,
     ),
     (SERVICE_SCAN_HEALTH, _scan_health, vol.Schema({vol.Optional("dry_run"): cv.boolean}), True),
+    (SERVICE_SCAN_HABITS, _scan_habits, vol.Schema({}), True),
     (
         SERVICE_AI_ANALYZE,
         _ai_analyze,

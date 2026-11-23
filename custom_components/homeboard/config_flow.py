@@ -55,6 +55,7 @@ from .const import (
     CONF_HEALTH_UNAVAILABLE_MINUTES,
     CONF_HEALTH_UPDATES,
     CONF_LEARN_DEFAULTS,
+    CONF_LEARN_HABITS,
     CONF_LEARN_HEALTH,
     CONF_LEARN_PATTERNS,
     CONF_LEARN_RHYTHM,
@@ -315,6 +316,7 @@ class HomeboardOptionsFlow(OptionsFlowWithReload):
                 vol.Optional(CONF_LEARN_WORKLOAD, default=True): BooleanSelector(),
                 vol.Optional(CONF_LEARN_HEALTH, default=True): BooleanSelector(),
                 vol.Optional(CONF_LEARN_RHYTHM, default=False): BooleanSelector(),
+                vol.Optional(CONF_LEARN_HABITS, default=False): BooleanSelector(),
             }
         )
         return self.async_show_form(

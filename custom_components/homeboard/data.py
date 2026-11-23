@@ -28,6 +28,7 @@ from .const import (
     CONF_DUE_SOON_HOURS,
     CONF_HEALTH_ENABLED,
     CONF_LEARN_DEFAULTS,
+    CONF_LEARN_HABITS,
     CONF_LEARN_HEALTH,
     CONF_LEARN_PATTERNS,
     CONF_LEARN_RHYTHM,
@@ -139,6 +140,8 @@ class HomeboardData(ChecklistMixin):
         self.health_state: dict[str, Any] = {}
         """Persisted state of the health scanner (first-scan review)."""
         self.ai: Any = None
+        self.habits: Any = None
+        """The ``HabitsScanner`` (automation ideas)."""
         """The ``AiFixEngine`` (AI Fix)."""
         self.ai_state: dict[str, Any] = {}
         """Persisted AI Fix records per issue and the daily usage counter."""
@@ -215,6 +218,7 @@ class HomeboardData(ChecklistMixin):
                 "workload": bool(self.options.get(CONF_LEARN_WORKLOAD, True)),
                 "health": bool(self.options.get(CONF_LEARN_HEALTH, True)),
                 "rhythm": bool(self.options.get(CONF_LEARN_RHYTHM, False)),
+                "habits": bool(self.options.get(CONF_LEARN_HABITS, False)),
             },
             "attachments": {
                 "enabled": bool(self.options.get(CONF_ATTACHMENTS_ENABLED, True)),
@@ -1401,6 +1405,8 @@ class HomeboardData(ChecklistMixin):
         issues = [
             self.issue_view(issue, now) for issue in self.issues.values() if not issue["archived"]
         ]
+        if not is_admin and self.learning is not None:
+            settings["insights_open"] = self.learning.open_count(admin=False)
         if is_admin and self.ai is not None:
             settings["ai_fix"] = self.ai.settings()
             for view in issues:
