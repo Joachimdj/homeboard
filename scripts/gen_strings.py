@@ -381,6 +381,22 @@ S["scan_health"] = (
     ],
 )
 
+S["ai_analyze"] = (
+    "Analyse an issue with AI",
+    "Ask the AI Task entity to diagnose a smart home issue and propose fixes (AI Fix). It only proposes: an administrator applies a proposal in the Homeboard panel. Needs AI Fix switched on in the options.",
+    ISSUE_REF
+    + [
+        (
+            "note",
+            "Hint",
+            "Something the AI should know (max 500 characters).",
+            TEXT,
+            False,
+            "The old bulb was replaced by a Hue bulb",
+        ),
+    ],
+)
+
 S["add_checklist_item"] = (
     "Add checklist item",
     "Add an item to the checklist of an issue.",
@@ -510,6 +526,7 @@ strings = {
                     "people": "People and push",
                     "files": "Photos, files and Assist",
                     "health": "Smart home health",
+                    "ai": "AI Fix",
                     "learning": "Learning",
                 },
             },
@@ -575,6 +592,16 @@ strings = {
                     "learn_rhythm": "Everyday rhythm (home / away by hour)",
                 },
             },
+            "ai": {
+                "title": "Homeboard: AI Fix",
+                "description": "Lets an AI diagnose smart home issues on the board and propose fixes, for example a corrected automation. The AI only proposes: an administrator reviews the change and applies it, a backup is made first and it can be undone. The text it is shown (the issue, the automation, related entities; secrets are masked) is sent to the AI Task entity you pick, which may be a cloud service. Automations that control the alarm, sirens, locks or valves are never changed unless you allow it here.",
+                "data": {
+                    "ai_fix_enabled": "Switch on AI Fix",
+                    "ai_fix_entity": "AI Task entity (empty = the preferred one)",
+                    "ai_fix_allow_protected": "Also allow changes to automations that control the alarm, sirens, locks and valves",
+                    "ai_fix_daily_limit": "Most analyses per day",
+                },
+            },
             "health": {
                 "title": "Homeboard: smart home health",
                 "description": "Homeboard creates issues by itself for things that need fixing and closes them when the fault is gone. The very first scan only creates one issue that lists what it found; close that issue to let it go ahead. Low batteries of ordinary devices are collected in one issue. Use the scan_health service with dry run to see what it would do.",
@@ -586,6 +613,7 @@ strings = {
                     "health_repairs": "Home Assistant repairs",
                     "health_updates": "Available updates (one grouped issue)",
                     "health_noisy_devices": "Also report TVs, speakers, light bulbs, robot mowers and phones",
+                    "health_automations": "Automations that use entities that no longer exist",
                     "health_unavailable_minutes": "Offline for at least (minutes)",
                     "health_battery_threshold": "Battery warning below (%)",
                     "health_project": "Project key for auto issues (empty = FIX, created on demand)",
@@ -682,6 +710,7 @@ icons = {
             "delete_recurring": "mdi:calendar-remove",
             "run_recurring": "mdi:calendar-check",
             "scan_health": "mdi:stethoscope",
+            "ai_analyze": "mdi:robot-outline",
             "add_checklist_item": "mdi:checkbox-marked-outline",
             "check_item": "mdi:check-circle-outline",
             "remove_checklist_item": "mdi:checkbox-blank-off-outline",
@@ -773,6 +802,7 @@ FN = {  # field name -> (name, description) in Danish, shared by the services
         "Udfyld ansvarlig, etiketter, prioritet og frist ud fra det Homeboard har lært, hvor teksten lader dem stå åbne.",
     ),
     "dry_run": ("Tørløb", "Rapportér kun hvad der ville ske, uden at ændre noget."),
+    "note": ("Hint", "Noget AI'en bør vide (højst 500 tegn)."),
 }
 SVC_DA = {
     "create_issue": (
@@ -834,6 +864,10 @@ SVC_DA = {
         "Glem det lærte",
         "Glemmer hvad en læringsfunktion har gemt (sensorrytmer, hjemme/ude-rytme, afviste forslag). Standardværdier, mønstre og arbejdsbyrde beregnes live ud fra tavlen.",
     ),
+    "ai_analyze": (
+        "Analysér en opgave med AI",
+        "Beder AI Task-entiteten om at stille en diagnose på en smart home-opgave og foreslå rettelser (AI-rettelse). Den foreslår kun: en administrator anvender forslaget i Homeboard-panelet. Kræver at AI-rettelse er slået til i indstillingerne.",
+    ),
     "scan_health": (
         "Scan smart home-sundhed",
         "Leder efter fejl (offline enheder, svage batterier, reparationer, integrationsproblemer) og opretter, opdaterer eller lukker opgaver. En manuel scanning virker med det samme; med tørløb rapporterer den kun.",
@@ -860,6 +894,7 @@ da["options"]["step"] = {
             "people": "Personer og push",
             "files": "Billeder, filer og Assist",
             "health": "Smart home-sundhed",
+            "ai": "AI-rettelse",
             "learning": "Læring",
         },
     },
@@ -925,6 +960,16 @@ da["options"]["step"] = {
             "learn_rhythm": "Hverdagsrytme (hjemme/ude pr. time)",
         },
     },
+    "ai": {
+        "title": "Homeboard: AI-rettelse",
+        "description": "Lader en AI stille diagnose på smart home-opgaver på tavlen og foreslå rettelser, fx en rettet automation. AI'en foreslår kun: en administrator gennemser ændringen og anvender den, der laves først en sikkerhedskopi, og den kan fortrydes. Den tekst AI'en får at se (opgaven, automationen, relaterede entiteter; hemmeligheder er skjult) sendes til den AI Task-entitet du vælger, som kan være en skytjeneste. Automationer der styrer alarmen, sirener, låse eller ventiler ændres aldrig, medmindre du tillader det her.",
+        "data": {
+            "ai_fix_enabled": "Slå AI-rettelse til",
+            "ai_fix_entity": "AI Task-entitet (tom = den foretrukne)",
+            "ai_fix_allow_protected": "Tillad også ændringer af automationer der styrer alarmen, sirener, låse og ventiler",
+            "ai_fix_daily_limit": "Maks. analyser pr. dag",
+        },
+    },
     "health": {
         "title": "Homeboard: smart home-sundhed",
         "description": "Homeboard opretter selv opgaver for ting der skal ordnes og lukker dem igen når fejlen er væk. Den allerførste scanning opretter kun én opgave med en liste over det fundne; luk den opgave for at lade den fortsætte. Svage batterier i almindelige enheder samles i én opgave. Kør tjenesten scan_health med tørløb for at se hvad den ville gøre.",
@@ -936,6 +981,7 @@ da["options"]["step"] = {
             "health_repairs": "Home Assistant-reparationer",
             "health_updates": "Tilgængelige opdateringer (én samlet opgave)",
             "health_noisy_devices": "Rapportér også tv, højttalere, pærer, plæneklippere og telefoner",
+            "health_automations": "Automationer der bruger entiteter som ikke findes mere",
             "health_unavailable_minutes": "Offline i mindst (minutter)",
             "health_battery_threshold": "Batteriadvarsel under (%)",
             "health_project": "Projektnøgle til automatiske opgaver (tom = FIX, oprettes ved behov)",

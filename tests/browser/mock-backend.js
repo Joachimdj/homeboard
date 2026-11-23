@@ -2,6 +2,7 @@
 // sections 5 and 10 (plus home health scan), with demo data. DOM free: the
 // browser harness and the node tests both use it.
 
+import { AI_COMMANDS, aiSummary, defaultAiSettings, newAiState, seedAi } from "./mock-ai.js";
 import { FileStore, MINIMAL_PDF, demoPicture } from "./mock-files.js";
 import { HEALTH_LEARNED, defaultsFrom, onlyMissing, rhythmGrid, suggestFor, workloadFrom } from "./mock-insights.js";
 
@@ -9,7 +10,7 @@ const PRIORITIES = ["highest", "high", "medium", "low", "lowest"];
 const TYPES = ["task", "bug", "story", "epic"];
 const CATEGORIES = ["todo", "in_progress", "done"];
 const GAP = 1000;
-const ADMIN_ONLY = /^(project\/(create|update|delete)|status\/|health\/scan|insights\/forget)/;
+const ADMIN_ONLY = /^(project\/(create|update|delete)|status\/|health\/scan|insights\/forget|ai\/)/;
 const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"];
 const FEATURES = ["defaults", "patterns", "workload", "health", "rhythm"];
 const SUGGESTION_FEATURE = { recurring: "patterns", health_ignore: "health", digest_time: "rhythm" };
@@ -162,7 +163,9 @@ export class MockBackend {
       health_enabled: true,
       learning: { defaults: true, patterns: true, workload: true, health: true, rhythm: false },
       attachments: { enabled: true, max_mb: 10 },
+      ai_fix: defaultAiSettings(), // administrators only, see payload()
     };
+    this.ai = newAiState(dateString(now()));
     this.cameras = [
       { entity_id: "camera.front_door", name: "Front door" },
       { entity_id: "camera.garden", name: "Garden" },
@@ -275,6 +278,11 @@ export class MockBackend {
     issue.updated = isoNow(this.now());
   }
 
+  /** ISO timestamp `offsetMs` from now. */
+  stamp(offsetMs = 0) {
+    return isoNow(new Date(this.now().getTime() + offsetMs));
+  }
+
   // ---- payload ------------------------------------------------------------------------
 
   flags(issue) {
@@ -299,6 +307,8 @@ export class MockBackend {
       checklist_done: checklist.filter((i) => i.done).length,
       attachment_count: attachments.length,
     };
+    const fix = this.user.is_admin && this.ai.fixes.get(issue.id);
+    if (fix) result.ai = aiSummary(fix);
     if (issue.type === "epic") {
       const children = [...this.issues.values()].filter((i) => i.parent === issue.id && !i.archived);
       result.epic_total = children.length;
@@ -348,9 +358,11 @@ export class MockBackend {
 
   payload() {
     const visible = [...this.issues.values()].filter((i) => !i.archived);
+    const settings = { ...structuredClone(this.settings), insights_open: this.openSuggestions().length };
+    if (!this.user.is_admin) delete settings.ai_fix; // administrators only (PROTOCOL 11.1)
     return {
       version: "0.1.0",
-      settings: { ...structuredClone(this.settings), insights_open: this.openSuggestions().length },
+      settings,
       me: this.user.person,
       is_admin: this.user.is_admin,
       people: this.people.map((p) => ({ ...p })),
@@ -500,6 +512,8 @@ export class MockBackend {
 }
 
 const COMMANDS = {
+  ...AI_COMMANDS,
+
   get() {
     return this.payload();
   },
@@ -669,6 +683,7 @@ const COMMANDS = {
   "issue/delete"({ issue_id }) {
     const issue = this.issue(issue_id);
     for (const attachment of issue.attachments) this.files.remove(attachment.id);
+    this.ai.fixes.delete(issue.id);
     this.issues.delete(issue.id);
     for (const other of this.issues.values()) if (other.parent === issue.id) other.parent = null;
     this.changed();
@@ -992,6 +1007,7 @@ function seedDemo(backend) {
   health("Integration problem: Philips Hue (retrying setup)", "medium", "bug", ["offline"], "health:entry:hue", { assignee: null });
   add(fix, "Backlog", { summary: "Document the Zigbee network layout", priority: "low", type: "task", age: 20 });
   picture(issueByKey("FIX-2"), "front_door-20261122-2015.png", 21, "camera");
+  seedAi(backend, issueByKey);
 
   const recurring = (project, fields) => {
     const params = { ...fields, summary: fields.summary };

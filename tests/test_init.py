@@ -152,6 +152,7 @@ async def open_section(hass, entry, section):
         "people",
         "files",
         "health",
+        "ai",
         "learning",
     }
     flow = await hass.config_entries.options.async_configure(

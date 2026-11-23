@@ -14,6 +14,7 @@ export class MockHass {
     this.latency = latency;
     this.pushDelay = pushDelay;
     this.uploadDelay = uploadDelay; // long enough to see the spinner
+    this.extraLatency = {}; // { "homeboard/ai/preview": ms }: slow single commands down (AI calls take up to a minute)
     this.calls = [];
     this.subscriptions = 0;
     this.activeSubscriptions = 0;
@@ -71,7 +72,7 @@ export class MockHass {
   }
 
   async callWS(message) {
-    await sleep(this.latency);
+    await sleep(this.latency + (this.extraLatency[message.type] || 0));
     const entry = { type: message.type, params: { ...message, type: undefined }, ok: true };
     this.calls.push(entry);
     try {
@@ -109,6 +110,8 @@ const GLYPHS = {
   "mdi:paperclip": "\u00a7", "mdi:format-list-checks": "\u2611", "mdi:drag-vertical": "\u2807", "mdi:camera-outline": "\u25ce", "mdi:camera-off-outline": "\u2298",
   "mdi:file-pdf-box": "PDF", "mdi:file-outline": "\u25a4", "mdi:chevron-left": "\u2039", "mdi:auto-fix": "\u2726", "mdi:lightbulb-on-outline": "\u2600", "mdi:brain": "\u2699",
   "mdi:eraser": "\u232b", "mdi:delete-sweep-outline": "\u2717",
+  "mdi:creation": "\u2726", "mdi:information-outline": "\u24d8", "mdi:alert-outline": "\u26a0", "mdi:content-copy": "\u29c9", "mdi:undo": "\u21b6",
+  "mdi:eye-outline": "\u25c9", "mdi:eye-off-outline": "\u25ce", "mdi:message-text-outline": "\u270e", "mdi:target": "\u25ce", "mdi:shield-lock-outline": "\u25a3",
   "mdi:checkbox-marked-circle-outline": "✔", "mdi:bug-outline": "❖", "mdi:bookmark-outline": "⚑", "mdi:lightning-bolt": "⚡",
   "mdi:chevron-double-up": "⇈", "mdi:chevron-up": "↑", "mdi:equal": "=", "mdi:chevron-down": "↓", "mdi:chevron-double-down": "⇊",
   "mdi:plus": "+", "mdi:plus-circle-outline": "⊕", "mdi:close": "✕", "mdi:close-circle-outline": "⊗", "mdi:dots-vertical": "⋮", "mdi:dots-horizontal": "⋯",

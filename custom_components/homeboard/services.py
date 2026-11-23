@@ -9,11 +9,12 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, callback
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import ServiceValidationError, Unauthorized
 from homeassistant.helpers import config_validation as cv
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    AI_NOTE_MAX,
     CATEGORIES,
     DOMAIN,
     ISSUE_TYPES,
@@ -22,6 +23,7 @@ from .const import (
     SERVICE_ADD_CHECKLIST_ITEM,
     SERVICE_ADD_COMMENT,
     SERVICE_ADD_STATUS,
+    SERVICE_AI_ANALYZE,
     SERVICE_ASSIGN_ISSUE,
     SERVICE_ATTACH_CAMERA_SNAPSHOT,
     SERVICE_CHECK_ITEM,
@@ -367,6 +369,23 @@ def _forget_learning(
     return {"forgotten": manager.learning.forget(call.data.get("feature"))}
 
 
+async def _ai_analyze(
+    manager: HomeboardData, call: ServiceCall, actor: str | None
+) -> dict[str, Any]:
+    if manager.ai is None:
+        raise ServiceValidationError("AI Fix is not running")
+    if call.context.user_id:  # an automation has no user; a person must be an administrator
+        user = await manager.hass.auth.async_get_user(call.context.user_id)
+        if user is None or not user.is_admin:
+            raise Unauthorized(context=call.context)
+    issue = manager.resolve_issue(
+        call.data.get("issue"),
+        project=call.data.get("project"),
+        dedupe_key=call.data.get("dedupe_key"),
+    )
+    return await manager.ai.analyze(issue["id"], call.data.get("note", ""), actor)
+
+
 async def _scan_health(
     manager: HomeboardData, call: ServiceCall, actor: str | None
 ) -> dict[str, Any]:
@@ -599,6 +618,14 @@ SERVICES: tuple[tuple[str, Callable[..., Any], vol.Schema, bool], ...] = (
         True,
     ),
     (SERVICE_SCAN_HEALTH, _scan_health, vol.Schema({vol.Optional("dry_run"): cv.boolean}), True),
+    (
+        SERVICE_AI_ANALYZE,
+        _ai_analyze,
+        vol.Schema(
+            {**ISSUE_REF, vol.Optional("note"): vol.All(cv.string, vol.Length(max=AI_NOTE_MAX))}
+        ),
+        True,
+    ),
 )
 
 

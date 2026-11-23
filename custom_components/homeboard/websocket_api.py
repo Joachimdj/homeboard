@@ -12,7 +12,15 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
-from .const import CATEGORIES, DOMAIN, ISSUE_TYPES, PRIORITIES, REPEAT_UNITS, SIGNAL_UPDATED
+from .const import (
+    AI_NOTE_MAX,
+    CATEGORIES,
+    DOMAIN,
+    ISSUE_TYPES,
+    PRIORITIES,
+    REPEAT_UNITS,
+    SIGNAL_UPDATED,
+)
 from .data import HomeboardData
 from .model import HomeboardError, NotFoundError
 
@@ -898,6 +906,123 @@ async def ws_health_scan(
     connection.send_result(msg["id"], result)
 
 
+def _ai(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> Any:
+    """Return the AI Fix engine or answer with an error."""
+    manager: HomeboardData | None = hass.data.get(DOMAIN)
+    if manager is None or manager.ai is None:
+        connection.send_error(msg["id"], "not_loaded", "Homeboard is not set up")
+        return None
+    return manager
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {vol.Required("type"): "homeboard/ai/get", vol.Required("issue_id"): cv.string}
+)
+@callback
+def ws_ai_get(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """AI Fix state of one issue (settings, readiness, the record)."""
+    manager = _ai(hass, connection, msg)
+    if manager is None:
+        return
+    try:
+        connection.send_result(msg["id"], manager.ai.status(msg["issue_id"]))
+    except HomeboardError as err:
+        connection.send_error(msg["id"], err.code, str(err))
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "homeboard/ai/preview",
+        vol.Required("issue_id"): cv.string,
+        vol.Optional("note"): cv.string,
+    }
+)
+@websocket_api.async_response
+async def ws_ai_preview(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Show exactly what would be sent to the AI (nothing is sent)."""
+    manager = _ai(hass, connection, msg)
+    if manager is None:
+        return
+    try:
+        result = await manager.ai.preview(msg["issue_id"], msg.get("note", ""))
+    except HomeboardError as err:
+        connection.send_error(msg["id"], err.code, str(err))
+        return
+    connection.send_result(msg["id"], result)
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "homeboard/ai/analyze",
+        vol.Required("issue_id"): cv.string,
+        vol.Optional("note"): vol.All(cv.string, vol.Length(max=AI_NOTE_MAX)),
+    }
+)
+@websocket_api.async_response
+async def ws_ai_analyze(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Start an analysis in the background."""
+    manager = _ai(hass, connection, msg)
+    if manager is None:
+        return
+    try:
+        result = await manager.ai.analyze(
+            msg["issue_id"], msg.get("note", ""), manager.person_for_user(connection.user.id)
+        )
+    except HomeboardError as err:
+        connection.send_error(msg["id"], err.code, str(err))
+        return
+    connection.send_result(msg["id"], result)
+
+
+def _ai_proposal_command(name: str, method: str) -> Callable[..., Any]:
+    @websocket_api.require_admin
+    @websocket_api.websocket_command(
+        {
+            vol.Required("type"): f"homeboard/ai/{name}",
+            vol.Required("issue_id"): cv.string,
+            vol.Required("proposal_id"): cv.string,
+        }
+    )
+    @websocket_api.async_response
+    async def command(
+        hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+    ) -> None:
+        manager = _ai(hass, connection, msg)
+        if manager is None:
+            return
+        actor = manager.person_for_user(connection.user.id)
+        try:
+            if method == "dismiss":
+                proposal = manager.ai.dismiss(msg["issue_id"], msg["proposal_id"])
+            else:
+                proposal = await getattr(manager.ai, method)(
+                    msg["issue_id"], msg["proposal_id"], actor
+                )
+        except HomeboardError as err:
+            connection.send_error(msg["id"], err.code, str(err))
+            return
+        connection.send_result(msg["id"], {"proposal": proposal})
+
+    command.__name__ = f"ws_ai_{name}"
+    return command
+
+
+ws_ai_apply = _ai_proposal_command("apply", "apply")
+ws_ai_undo = _ai_proposal_command("undo", "undo")
+ws_ai_dismiss = _ai_proposal_command("dismiss", "dismiss")
+
+
 COMMANDS = (
     ws_get,
     ws_subscribe,
@@ -933,6 +1058,12 @@ COMMANDS = (
     ws_insights_dismiss,
     ws_insights_forget,
     ws_health_scan,
+    ws_ai_get,
+    ws_ai_preview,
+    ws_ai_analyze,
+    ws_ai_apply,
+    ws_ai_undo,
+    ws_ai_dismiss,
 )
 
 

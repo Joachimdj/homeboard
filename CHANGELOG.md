@@ -4,6 +4,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions follo
 [Semantic Versioning](https://semver.org/); while the project is 0.x only the patch number is bumped
 for small changes.
 
+## [0.3.0] - 2026-11-23
+
+### Added
+- **AI Fix.** Press *Analyse with AI* on a smart-home issue: Home Assistant's AI Task entity diagnoses it and
+  proposes up to three fixes (edit an automation, switch it off, reload an integration, or manual steps that go
+  on the checklist). The AI only proposes. An administrator reviews the diff and presses *Apply*; the whole
+  `automations.yaml` is backed up first (`config/homeboard_backups`), the automation is checked after the
+  reload and rolled back by itself if it does not come up, and *Undo* restores it. Details in
+  `docs/DESIGN-0.3.md`.
+- Guard rails: the AI may only touch what it was shown; a proposed automation must pass Home Assistant's own
+  validation and may not use entities that do not exist; automations that control the alarm, sirens, locks, valves
+  or Alarmo are never written unless allowed in the options; a proposal for an automation that changed since the
+  analysis is refused; secrets (`secrets.yaml` values and keys such as `password`, `token`, `code`) are masked in
+  what is sent and in what is shown, and put back when applying.
+- The protected check is wide (case, templates, device / area / label / group targets, scripts, blueprints) and
+  runs again at Apply; Apply and Undo never overlap, backups have unique names, and Undo refuses to overwrite an edit
+  made after the fix. Found by an independent review before release; see `docs/DESIGN-0.3.md` section 5b.
+- *Show what is sent* previews the exact text before anything leaves Home Assistant. One analysis at a time,
+  at most 20 a day by default.
+- Service `homeboard.ai_analyze`, websocket `homeboard/ai/*` (admin only), events `homeboard_ai_proposal_ready`,
+  `homeboard_ai_fix_applied`, `homeboard_ai_fix_undone`. There is deliberately no service that applies a proposal.
+- New smart-home health detector (off by default): **Automations that use entities that no longer exist**, one
+  issue per enabled automation, high priority when it involves the alarm.
+- Options: *Configure > AI Fix* (switch on, AI Task entity, allow protected automations, daily limit).
+
 ## [0.2.2] - 2026-11-23
 
 ### Fixed

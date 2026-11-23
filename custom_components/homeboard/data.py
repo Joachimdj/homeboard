@@ -138,6 +138,10 @@ class HomeboardData(ChecklistMixin):
         """Persisted private state of the learning engine."""
         self.health_state: dict[str, Any] = {}
         """Persisted state of the health scanner (first-scan review)."""
+        self.ai: Any = None
+        """The ``AiFixEngine`` (AI Fix)."""
+        self.ai_state: dict[str, Any] = {}
+        """Persisted AI Fix records per issue and the daily usage counter."""
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -149,6 +153,7 @@ class HomeboardData(ChecklistMixin):
         self.recurring = raw.get("recurring", {})
         self.learning_data = raw.get("learning", {})
         self.health_state = raw.get("health", {})
+        self.ai_state = raw.get("ai", {})
         for issue in self.issues.values():  # documents written before 0.2
             issue.setdefault("checklist", [])
             issue.setdefault("attachments", [])
@@ -160,6 +165,7 @@ class HomeboardData(ChecklistMixin):
             "recurring": self.recurring,
             "learning": self.learning_data,
             "health": self.health_state,
+            "ai": self.ai_state,
         }
 
     async def async_save_now(self) -> None:
@@ -357,6 +363,10 @@ class HomeboardData(ChecklistMixin):
         for name, data in events or []:
             self.hass.bus.async_fire(name, data)
         self._signal()
+
+    def save_ai_state(self) -> None:
+        """Persist the AI Fix records and tell subscribers (the issue payload carries a summary)."""
+        self._commit()
 
     def save_health_state(self) -> None:
         """Persist ``health_state`` and refresh the entities that show it."""
@@ -948,6 +958,8 @@ class HomeboardData(ChecklistMixin):
         issue = self.resolve_issue(ref)
         data = self._issue_event(issue, actor, check_source(source))
         self._drop_files(issue)
+        if self.ai is not None:
+            self.ai.forget_issue(issue["id"])
         del self.issues[issue["id"]]
         for other in self.issues.values():
             if other["parent"] == issue["id"]:
@@ -1385,9 +1397,19 @@ class HomeboardData(ChecklistMixin):
     def full_payload(self, *, user_id: str | None = None, is_admin: bool = False) -> dict[str, Any]:
         """Return the complete frontend payload (docs/PROTOCOL.md section 4)."""
         now = dt_util.now()
+        settings = self.settings()
+        issues = [
+            self.issue_view(issue, now) for issue in self.issues.values() if not issue["archived"]
+        ]
+        if is_admin and self.ai is not None:
+            settings["ai_fix"] = self.ai.settings()
+            for view in issues:
+                summary = self.ai.summary(view["id"])
+                if summary is not None:
+                    view["ai"] = summary
         return {
             "version": self.version,
-            "settings": self.settings(),
+            "settings": settings,
             "me": self.person_for_user(user_id),
             "is_admin": is_admin,
             "people": self.people(),
@@ -1395,11 +1417,7 @@ class HomeboardData(ChecklistMixin):
                 {k: v for k, v in project.items() if k != "issue_seq" and k != "created"}
                 for project in self.projects.values()
             ],
-            "issues": [
-                self.issue_view(issue, now)
-                for issue in self.issues.values()
-                if not issue["archived"]
-            ],
+            "issues": issues,
             "recurring": list(self.recurring.values()),
             "stats": self.stats(now),
         }

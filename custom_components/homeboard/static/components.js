@@ -1,5 +1,6 @@
 // Small view helpers (vnode builders) shared by panel, dialogs and cards.
 
+import { chipState } from "./ai-fix.js";
 import { epicProgress, issueChecklist } from "./checklist.js";
 import { h } from "./dom.js";
 import { t, tn } from "./i18n.js";
@@ -69,6 +70,21 @@ export function checklistChip(issue) {
 export function attachmentChip(issue) {
   if (!issue.attachment_count) return null;
   return h("span.chip.plain", { title: tn("attachments.chip_title", issue.attachment_count) }, icon("mdi:paperclip"), issue.attachment_count);
+}
+
+/**
+ * "AI" chip when the AI has a fix proposal waiting, "AI..." while it analyses (PROTOCOL 11.1). Only
+ * administrators get `issue.ai`, so everyone else simply sees nothing.
+ */
+export function aiChip(issue) {
+  const state = chipState(issue);
+  if (state === "running") {
+    return h("span.chip.ai.running", { title: t("ai.chip_running_title"), "aria-label": t("ai.chip_running_title"), role: "img" }, h("span.mini-spin", { "aria-hidden": "true" }), t("ai.chip_running"));
+  }
+  if (state === "ready") {
+    return h("span.chip.ai", { title: t("ai.chip_title"), "aria-label": t("ai.chip_title"), role: "img" }, icon("mdi:creation"), t("ai.chip"));
+  }
+  return null;
 }
 
 /** Progress bar over the child issues of an epic. */

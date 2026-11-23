@@ -24,6 +24,7 @@
           "people": "Personer og push",
           "files": "Billeder, filer og Assist",
           "health": "Smart home-sundhed",
+          "ai": "AI-rettelse",
           "learning": "Læring"
         }
       },
@@ -91,6 +92,16 @@
           "learn_rhythm": "Hverdagsrytme (hjemme/ude pr. time)"
         }
       },
+      "ai": {
+        "title": "Homeboard: AI-rettelse",
+        "description": "Lader en AI stille diagnose på smart home-opgaver på tavlen og foreslå rettelser, fx en rettet automation. AI'en foreslår kun: en administrator gennemser ændringen og anvender den, der laves først en sikkerhedskopi, og den kan fortrydes. Den tekst AI'en får at se (opgaven, automationen, relaterede entiteter; hemmeligheder er skjult) sendes til den AI Task-entitet du vælger, som kan være en skytjeneste. Automationer der styrer alarmen, sirener, låse eller ventiler ændres aldrig, medmindre du tillader det her.",
+        "data": {
+          "ai_fix_enabled": "Slå AI-rettelse til",
+          "ai_fix_entity": "AI Task-entitet (tom = den foretrukne)",
+          "ai_fix_allow_protected": "Tillad også ændringer af automationer der styrer alarmen, sirener, låse og ventiler",
+          "ai_fix_daily_limit": "Maks. analyser pr. dag"
+        }
+      },
       "health": {
         "title": "Homeboard: smart home-sundhed",
         "description": "Homeboard opretter selv opgaver for ting der skal ordnes og lukker dem igen når fejlen er væk. Den allerførste scanning opretter kun én opgave med en liste over det fundne; luk den opgave for at lade den fortsætte. Svage batterier i almindelige enheder samles i én opgave. Kør tjenesten scan_health med tørløb for at se hvad den ville gøre.",
@@ -102,6 +113,7 @@
           "health_repairs": "Home Assistant-reparationer",
           "health_updates": "Tilgængelige opdateringer (én samlet opgave)",
           "health_noisy_devices": "Rapportér også tv, højttalere, pærer, plæneklippere og telefoner",
+          "health_automations": "Automationer der bruger entiteter som ikke findes mere",
           "health_unavailable_minutes": "Offline i mindst (minutter)",
           "health_battery_threshold": "Batteriadvarsel under (%)",
           "health_project": "Projektnøgle til automatiske opgaver (tom = FIX, oprettes ved behov)",
@@ -737,6 +749,28 @@
         "dry_run": {
           "name": "Tørløb",
           "description": "Rapportér kun hvad der ville ske, uden at ændre noget."
+        }
+      }
+    },
+    "ai_analyze": {
+      "name": "Analysér en opgave med AI",
+      "description": "Beder AI Task-entiteten om at stille en diagnose på en smart home-opgave og foreslå rettelser (AI-rettelse). Den foreslår kun: en administrator anvender forslaget i Homeboard-panelet. Kræver at AI-rettelse er slået til i indstillingerne.",
+      "fields": {
+        "issue": {
+          "name": "Opgave",
+          "description": "Nøgle (HOME-12) eller id. Lad den stå tom, hvis du bruger projekt + dedupe-nøgle."
+        },
+        "project": {
+          "name": "Projekt",
+          "description": "Projektnøgle eller id."
+        },
+        "dedupe_key": {
+          "name": "Dedupe-nøgle",
+          "description": "Stabil nøgle, fx battery_front_door. En åben opgave med samme nøgle oprettes ikke igen."
+        },
+        "note": {
+          "name": "Hint",
+          "description": "Noget AI'en bør vide (højst 500 tegn)."
         }
       }
     },

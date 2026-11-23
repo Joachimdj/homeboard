@@ -344,3 +344,83 @@ Push: `person_notify` = `{ "person.x": ["mobile_app_x"] }` (empty = auto-detecte
 Files: `attachments_enabled` (default true), `max_upload_mb` (default 10). Checklists: `checklist_autodone` (default false: moving the
 last item to done moves the issue to Done). Learning: `learn_defaults`, `learn_patterns`, `learn_workload`, `learn_health`
 (default true), `learn_rhythm` (default **false**: reads person home / away state).
+
+## 11. Version 0.3 additions (AI Fix)
+
+Design and the reasons for every limit: `docs/DESIGN-0.3.md`. Everything here is additive and **admin only**
+(a model answer can edit automations, so only administrators see or call any of it).
+
+### 11.1 Store and payload
+
+Store, top level: `ai: { "fixes": { "<issue_id>": Record }, "usage": { "day": "2026-11-23", "count": 3 } }`.
+
+- Issue (list payload, administrators only): `ai: { state, rev, proposals, applied }` when the issue has a record,
+  otherwise the key is absent. `state` is `running | ready | failed`; `rev` grows with every change of the record (refetch
+  `homeboard/ai/get` when it changes); `proposals` counts proposals still `proposed`; `applied` counts applied ones.
+- `settings.ai_fix = { enabled, entity, allow_protected }` (administrators only; `enabled` false when the option is off or
+  no AI Task entity exists).
+
+**Record** (what `homeboard/ai/get` returns as `record`):
+
+```jsonc
+{ "state": "ready", "rev": 3, "started": "<iso>", "finished": "<iso>|null", "entity": "ai_task.claude_ai_task",
+  "note": "", "diagnosis": "plain text", "confidence": "low|medium|high", "error": null,
+  "sent": { "chars": 11800, "entities": 14, "automations": 1 },
+  "proposals": [ Proposal ] }
+```
+
+**Proposal** (the server also keeps the machine config; the client never sees or sends it):
+
+```jsonc
+{ "id": "p1", "kind": "automation_edit | automation_disable | reload_integration | manual_steps",
+  "title": "Point the reminder at the new alarm panel", "explanation": "plain text", "risk": "low|medium|high",
+  "target": "automation.alarm_reminder", "target_name": "Alarm reminder",   // null for manual_steps
+  "status": "proposed | applied | dismissed | failed | undone",
+  "blocked": null,                       // or { "code": "protected|not_editable|invalid|unknown_entities|stale", "message": "..." }
+  "warnings": ["..."],                   // shown next to the diff
+  "diff": "--- current\n+++ proposed\n@@ ...",   // unified diff (automation_edit), else ""
+  "new_yaml": "alias: ...",              // the proposed automation as YAML (automation_edit), for "copy"
+  "steps": ["..."],                      // manual_steps
+  "applied_at": null, "undone_at": null, "error": null }
+```
+
+A `blocked` proposal can still be read and its `new_yaml` copied, but Apply is refused with the same code.
+**All text from the model is untrusted: render it with `textContent`, never as HTML.**
+
+### 11.2 WebSocket (all `require_admin`)
+
+| type | params | result |
+|------|--------|--------|
+| `homeboard/ai/get` | `issue_id` | `{ enabled, ready, reason, entity, entity_name, limit: { used, max }, record }` |
+| `homeboard/ai/preview` | `issue_id`, `note?` | `{ prompt, chars, entities, automations, redactions }` (exactly what would be sent, secrets masked) |
+| `homeboard/ai/analyze` | `issue_id`, `note?` (the owner's hint, max 500 chars) | `{ state: "running" }` (returns at once; follow `issue.ai.rev`) |
+| `homeboard/ai/apply` | `issue_id`, `proposal_id` | `{ proposal }` |
+| `homeboard/ai/undo` | `issue_id`, `proposal_id` | `{ proposal }` |
+| `homeboard/ai/dismiss` | `issue_id`, `proposal_id` | `{ proposal }` |
+
+`reason` in `ai/get` explains `ready: false`: `disabled` (option off), `no_entity` (no AI Task entity), `choose_entity`
+(several, none chosen), `unsupported` (no AI Task in this Home Assistant), `limit` (daily limit reached), or `null`.
+`entity_name` is always set when `entity` is (the entity id when it has no friendly name). Error codes: `ai_disabled`,
+`ai_unavailable`, `ai_limit`, `ai_busy` (already running), `blocked` (the proposal's `blocked.code` is in the message),
+`not_proposed` (apply / dismiss of a proposal that is not `proposed`), `not_applied` (undo of something not applied
+or not undoable), `stale` (undo refused: the automation was edited after the fix), `backup_missing`, `undo_failed`,
+`not_found`. Every proposal also carries `undoable` (true only when `status` is `applied` and the kind is
+`automation_edit` or `automation_disable`).
+
+`rev` grows only when the record changes (not when `ready`, `reason` or `limit` change: refetch `ai/get` after a failed
+call). A new analysis replaces the record but **keeps proposals that are `applied`**, so Undo stays possible; ids of new
+proposals continue after the highest id in the record. A `failed` record can therefore still hold applied proposals.
+Apply, undo and dismiss on one issue never overlap: the second of two simultaneous calls gets `not_proposed`.
+
+### 11.3 Service and events
+
+Service `ai_analyze` (`issue` or `project` + `dedupe_key`, `note?`; response `{ state }`). There is no service that applies a
+proposal. Events: `homeboard_ai_proposal_ready` (`issue`, `key`, `proposals`), `homeboard_ai_fix_applied` and
+`homeboard_ai_fix_undone` (`issue`, `key`, `proposal`, `kind`, `target`). Applying or undoing also writes a comment and an
+activity line on the issue.
+
+### 11.4 Options (config entry)
+
+`ai_fix_enabled` (default false), `ai_fix_entity` (an `ai_task.*` entity; empty = the preferred one, else the only one),
+`ai_fix_allow_protected` (default false), `ai_fix_daily_limit` (default 20), `health_automations` (default false: the
+detector for automations that use missing entities, key `health:automation:<automation entity id>`, section 3b).

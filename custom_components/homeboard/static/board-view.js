@@ -1,7 +1,7 @@
 // Board and backlog rendering. Pure vnode builders; the BoardController in
 // board-controller.js owns the state (drag, collapsed lanes) and the events.
 
-import { attachmentChip, autoChip, avatar, checklistChip, dueChip, emptyState, epicBar, icon, labelChip, priorityIcon, typeIcon } from "./components.js";
+import { aiChip, attachmentChip, autoChip, avatar, checklistChip, dueChip, emptyState, epicBar, icon, labelChip, priorityIcon, typeIcon } from "./components.js";
 import { h } from "./dom.js";
 import { t } from "./i18n.js";
 import { categoryOf, personName } from "./indexes.js";
@@ -102,6 +102,7 @@ function issueCard(issue, ctx) {
     labels.length || issue.source === "health" ? h("div.card-labels", issue.source === "health" ? autoChip() : null, labels.filter((l) => l !== "auto").map((l) => labelChip(l))) : null,
     h(
       "div.card-foot",
+      aiChip(issue),
       dueChip(issue, now),
       epic ? h("span.chip.epic", { title: epic.summary }, icon("mdi:lightning-bolt"), epic.key) : null,
       checklistChip(issue),
@@ -134,6 +135,7 @@ function issueRow(issue, ctx) {
     h("span.key", issue.key),
     h("span.row-summary", issue.summary),
     issue.source === "health" ? autoChip() : null,
+    aiChip(issue),
     labels.length ? h("span.row-labels", labels.map((l) => labelChip(l))) : null,
     checklistChip(issue),
     attachmentChip(issue),

@@ -3,6 +3,7 @@
 
 import { actions } from "./actions.js";
 import { describeActivity } from "./activity.js";
+import { AiFixSection } from "./ai-fix-section.js";
 import { AttachmentsSection } from "./attachments.js";
 import { ChecklistEditor } from "./checklist-editor.js";
 import { autoChip, avatar, icon, labelChip, personOptions, priorityOptions, selectField, typeIcon, typeOptions } from "./components.js";
@@ -47,6 +48,7 @@ class IssueDialog {
     this.suggesting = false;
     this.checklist = new ChecklistEditor({ dialog: this });
     this.files = new AttachmentsSection({ dialog: this });
+    this.ai = new AiFixSection({ dialog: this });
     if (this.create) {
       const { index } = store.state;
       const project = index?.projectById.get(projectId) || index?.projects.find((p) => !p.archived);
@@ -75,11 +77,13 @@ class IssueDialog {
     this.handle = overlay.dialog(this);
     this.files.bind();
     if (!this.create) this.loadDetail();
+    this.ai.sync();
     return this;
   }
 
   onClose() {
     this.files.unbind();
+    this.ai.dispose();
     this.unsubscribe?.();
     this.release?.();
   }
@@ -124,6 +128,7 @@ class IssueDialog {
     }
     const issue = this.issue;
     if (issue && detailKeyOf(issue) !== this.detailKey) this.loadDetail();
+    this.ai.sync();
     this.update();
   }
 
@@ -188,6 +193,7 @@ class IssueDialog {
   onEscape() {
     const active = deepActiveElement();
     if (this.checklist.onEscape(active)) return true;
+    if (this.ai.onEscape()) return true;
     const field = active?.dataset?.field;
     if (!this.create && field && TEXT_FIELDS.has(field) && field in this.draft && this.draft[field] !== (this.issue?.[field] || "")) {
       delete this.draft[field];
@@ -477,6 +483,8 @@ class IssueDialog {
     this.issueId = issueId;
     this.detail = null;
     this.detailKey = "";
+    this.ai.reset();
+    this.ai.sync();
     this.loadDetail();
     this.update();
   }
@@ -570,6 +578,7 @@ class IssueDialog {
     const thread = [this.epicChildren()];
     if (!this.create) {
       thread.push(
+        this.ai.render(),
         this.checklist.render(),
         this.files.render(),
         h(

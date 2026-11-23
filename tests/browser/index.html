@@ -67,6 +67,15 @@
     </span>
     <label><input type="checkbox" id="attachments" checked> Attachments</label>
     <label>max <input type="number" id="maxmb" value="10" min="0.001" step="any" style="width:56px"> MB</label>
+    <span>AI Fix:
+      <label><input type="checkbox" id="aifix" checked> on</label>
+      <select id="aireason" aria-label="AI state">
+        <option value="">ready</option><option value="limit">limit reached</option><option value="no_entity">no entity</option>
+        <option value="choose_entity">choose entity</option><option value="unsupported">unsupported</option><option value="strange">unknown reason</option>
+      </select>
+      <label><input type="checkbox" id="aifail"> calls fail</label>
+      <label><input type="checkbox" id="aislow"> slow preview / analyse (4 s)</label>
+    </span>
     <button id="expire" title="Revoke the signed file URLs handed out so far, like the one hour expiry">Expire file URLs</button>
     <button id="reset">Reset demo data</button>
   </div>
@@ -165,10 +174,14 @@
     }
     $("attachments").onchange = (e) => backend.setSettings({ attachments: { enabled: e.target.checked } });
     $("maxmb").onchange = (e) => backend.setSettings({ attachments: { max_mb: Number(e.target.value) } });
+    $("aifix").onchange = (e) => backend.setSettings({ ai_fix: { enabled: e.target.checked } });
+    $("aireason").onchange = (e) => { backend.ai.reason = e.target.value || null; backend.changed(); };
+    $("aifail").onchange = (e) => { backend.ai.fail = e.target.checked; };
+    $("aislow").onchange = (e) => { for (const type of ["homeboard/ai/preview", "homeboard/ai/analyze"]) mock.extraLatency[type] = e.target.checked ? 4000 : 0; };
     $("expire").onclick = () => backend.files.expire();
     $("reset").onclick = () => {
       const fresh = new MockBackend();
-      Object.assign(backend, { projects: fresh.projects, issues: fresh.issues, recurring: fresh.recurring, counter: fresh.counter, suggestions: fresh.suggestions, files: fresh.files });
+      Object.assign(backend, { projects: fresh.projects, issues: fresh.issues, recurring: fresh.recurring, counter: fresh.counter, suggestions: fresh.suggestions, files: fresh.files, ai: fresh.ai });
       backend.handled = new Set();
       backend.forgotten = new Set();
       backend.changed();
@@ -179,6 +192,8 @@
     if (query.has("kiosk")) $("kiosk").checked = true;
     if (query.has("nolearn")) for (const box of document.querySelectorAll("[data-learn]")) { box.checked = false; box.onchange(); }
     if (query.has("learn")) for (const feature of query.get("learn").split(",")) { const box = document.querySelector(`[data-learn="${feature}"]`); if (box) { box.checked = true; box.onchange(); } }
+    if (query.get("aireason")) { $("aireason").value = query.get("aireason"); $("aireason").onchange({ target: $("aireason") }); }
+    if (query.has("aislow")) { $("aislow").checked = true; $("aislow").onchange({ target: $("aislow") }); }
     if (query.has("noattach")) { $("attachments").checked = false; $("attachments").onchange({ target: $("attachments") }); }
     // Helpers for driving the page from a script (synthetic pointer events, card lookup).
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

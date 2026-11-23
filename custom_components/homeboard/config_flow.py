@@ -27,6 +27,10 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
+    CONF_AI_FIX_ALLOW_PROTECTED,
+    CONF_AI_FIX_DAILY_LIMIT,
+    CONF_AI_FIX_ENABLED,
+    CONF_AI_FIX_ENTITY,
     CONF_ASSIST_SENTENCES,
     CONF_ATTACHMENTS_ENABLED,
     CONF_AUTO_ARCHIVE_DAYS,
@@ -35,6 +39,7 @@ from .const import (
     CONF_DIGEST_TIME,
     CONF_DUE_SOON_HOURS,
     CONF_HEALTH_ASSIGNEE,
+    CONF_HEALTH_AUTOMATIONS,
     CONF_HEALTH_BATTERY,
     CONF_HEALTH_BATTERY_THRESHOLD,
     CONF_HEALTH_ENABLED,
@@ -72,6 +77,7 @@ from .const import (
     CONF_QUIET_START,
     CONF_STARTER_PROJECT,
     CONF_TRACKED_PEOPLE,
+    DEFAULT_AI_FIX_DAILY_LIMIT,
     DEFAULT_AUTO_ARCHIVE_DAYS,
     DEFAULT_DIGEST_TIME,
     DEFAULT_DUE_SOON_HOURS,
@@ -97,6 +103,7 @@ INT_KEYS = (
     CONF_HEALTH_SNOOZE_DAYS,
     CONF_HEALTH_MAX_OPEN,
     CONF_MAX_UPLOAD_MB,
+    CONF_AI_FIX_DAILY_LIMIT,
 )
 
 
@@ -159,7 +166,7 @@ class HomeboardOptionsFlow(OptionsFlowWithReload):
         self._options = dict(self.config_entry.options)
         return self.async_show_menu(
             step_id="init",
-            menu_options=["general", "alerts", "people", "files", "health", "learning"],
+            menu_options=["general", "alerts", "people", "files", "health", "ai", "learning"],
         )
 
     async def async_step_general(
@@ -315,6 +322,28 @@ class HomeboardOptionsFlow(OptionsFlowWithReload):
             data_schema=self.add_suggested_values_to_schema(schema, self._options),
         )
 
+    async def async_step_ai(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """AI Fix (an AI Task entity proposes fixes for smart home issues)."""
+        if user_input is not None:
+            self._merge(user_input)
+            return self._save()
+        schema = vol.Schema(
+            {
+                vol.Optional(CONF_AI_FIX_ENABLED, default=False): BooleanSelector(),
+                vol.Optional(CONF_AI_FIX_ENTITY): EntitySelector(
+                    EntitySelectorConfig(domain="ai_task")
+                ),
+                vol.Optional(CONF_AI_FIX_ALLOW_PROTECTED, default=False): BooleanSelector(),
+                vol.Optional(CONF_AI_FIX_DAILY_LIMIT, default=DEFAULT_AI_FIX_DAILY_LIMIT): _number(
+                    1, 200
+                ),
+            }
+        )
+        return self.async_show_form(
+            step_id="ai",
+            data_schema=self.add_suggested_values_to_schema(schema, self._options),
+        )
+
     async def async_step_health(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Home health (auto-generated issues)."""
         if user_input is not None:
@@ -330,6 +359,7 @@ class HomeboardOptionsFlow(OptionsFlowWithReload):
                 vol.Optional(CONF_HEALTH_REPAIRS, default=True): BooleanSelector(),
                 vol.Optional(CONF_HEALTH_UPDATES, default=False): BooleanSelector(),
                 vol.Optional(CONF_HEALTH_NOISY_DEVICES, default=False): BooleanSelector(),
+                vol.Optional(CONF_HEALTH_AUTOMATIONS, default=False): BooleanSelector(),
                 vol.Optional(
                     CONF_HEALTH_UNAVAILABLE_MINUTES, default=DEFAULT_HEALTH_UNAVAILABLE_MINUTES
                 ): _number(5, 1440),

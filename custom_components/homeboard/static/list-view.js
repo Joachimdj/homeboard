@@ -1,6 +1,6 @@
 // The List tab: all issues of a project as a sortable table.
 
-import { avatar, dueChip, emptyState, icon, priorityIcon, typeIcon } from "./components.js";
+import { aiChip, avatar, dueChip, emptyState, icon, priorityIcon, typeIcon } from "./components.js";
 import { h } from "./dom.js";
 import { t } from "./i18n.js";
 import { SORT_COLUMNS, filterIssues, sortIssues } from "./filters.js";
@@ -52,7 +52,7 @@ export function renderList(ctx) {
                   },
                 },
                 h("td.col-key", typeIcon(issue.type), h("span.key", issue.key)),
-                h("td.col-summary", issue.summary),
+                h("td.col-summary", issue.summary, aiChip(issue)),
                 h("td.col-status", h("span.chip.plain", statusName(index, issue.status))),
                 h("td.col-priority", priorityIcon(issue.priority)),
                 h("td.col-assignee", avatar(index, issue.assignee, "sm")),

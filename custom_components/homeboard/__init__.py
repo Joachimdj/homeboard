@@ -11,6 +11,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
+from .ai_fix import AiFixEngine
 from .assist import async_setup_assist, async_unload_assist
 from .const import CONF_STARTER_PROJECT, DOMAIN
 from .data import HomeboardData
@@ -67,6 +68,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HomeboardConfigEntry) ->
     manager.files = FileStore(hass, manager)
     manager.push = PushNotifier(hass, manager)
     manager.learning = LearningEngine(hass, manager)
+    manager.ai = AiFixEngine(hass, manager)
 
     await async_register_frontend(hass, dict(entry.options), manager.version)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -91,6 +93,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: HomeboardConfigEntry) -
             manager.push.async_stop()
         if manager.learning:
             manager.learning.async_stop()
+        if manager.ai:
+            manager.ai.async_stop()
         async_unregister_frontend(hass)
         await async_unload_assist(hass, entry)
         await manager.async_save_now()

@@ -165,6 +165,34 @@ export const actions = {
     return store.call("homeboard/suggest", { text, ...(project ? { project } : {}) });
   },
 
+  /**
+   * AI Fix (PROTOCOL 11.2), administrators only. Plain calls: the AI Fix section shows the error itself
+   * (inline and as a toast) because it also needs the code. `preview` and `analyze` can take up to a minute.
+   */
+  aiGet(issueId) {
+    return store.call("homeboard/ai/get", { issue_id: issueId });
+  },
+
+  aiPreview(issueId, note) {
+    return store.call("homeboard/ai/preview", { issue_id: issueId, ...(note ? { note } : {}) });
+  },
+
+  aiAnalyze(issueId, note) {
+    return store.call("homeboard/ai/analyze", { issue_id: issueId, ...(note ? { note } : {}) });
+  },
+
+  aiApply(issueId, proposalId) {
+    return store.call("homeboard/ai/apply", { issue_id: issueId, proposal_id: proposalId });
+  },
+
+  aiUndo(issueId, proposalId) {
+    return store.call("homeboard/ai/undo", { issue_id: issueId, proposal_id: proposalId });
+  },
+
+  aiDismiss(issueId, proposalId) {
+    return store.call("homeboard/ai/dismiss", { issue_id: issueId, proposal_id: proposalId });
+  },
+
   /** Plain read (no toast on failure is wanted by callers that handle it themselves). */
   getIssue(issueId) {
     return store.call("homeboard/issue/get", { issue_id: issueId });

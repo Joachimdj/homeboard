@@ -51,6 +51,9 @@
     "scan_health": {
       "service": "mdi:stethoscope"
     },
+    "ai_analyze": {
+      "service": "mdi:robot-outline"
+    },
     "add_checklist_item": {
       "service": "mdi:checkbox-marked-outline"
     },

@@ -24,6 +24,7 @@
           "people": "People and push",
           "files": "Photos, files and Assist",
           "health": "Smart home health",
+          "ai": "AI Fix",
           "learning": "Learning"
         }
       },
@@ -91,6 +92,16 @@
           "learn_rhythm": "Everyday rhythm (home / away by hour)"
         }
       },
+      "ai": {
+        "title": "Homeboard: AI Fix",
+        "description": "Lets an AI diagnose smart home issues on the board and propose fixes, for example a corrected automation. The AI only proposes: an administrator reviews the change and applies it, a backup is made first and it can be undone. The text it is shown (the issue, the automation, related entities; secrets are masked) is sent to the AI Task entity you pick, which may be a cloud service. Automations that control the alarm, sirens, locks or valves are never changed unless you allow it here.",
+        "data": {
+          "ai_fix_enabled": "Switch on AI Fix",
+          "ai_fix_entity": "AI Task entity (empty = the preferred one)",
+          "ai_fix_allow_protected": "Also allow changes to automations that control the alarm, sirens, locks and valves",
+          "ai_fix_daily_limit": "Most analyses per day"
+        }
+      },
       "health": {
         "title": "Homeboard: smart home health",
         "description": "Homeboard creates issues by itself for things that need fixing and closes them when the fault is gone. The very first scan only creates one issue that lists what it found; close that issue to let it go ahead. Low batteries of ordinary devices are collected in one issue. Use the scan_health service with dry run to see what it would do.",
@@ -102,6 +113,7 @@
           "health_repairs": "Home Assistant repairs",
           "health_updates": "Available updates (one grouped issue)",
           "health_noisy_devices": "Also report TVs, speakers, light bulbs, robot mowers and phones",
+          "health_automations": "Automations that use entities that no longer exist",
           "health_unavailable_minutes": "Offline for at least (minutes)",
           "health_battery_threshold": "Battery warning below (%)",
           "health_project": "Project key for auto issues (empty = FIX, created on demand)",
@@ -737,6 +749,28 @@
         "dry_run": {
           "name": "Dry run",
           "description": "Only report what would happen, change nothing."
+        }
+      }
+    },
+    "ai_analyze": {
+      "name": "Analyse an issue with AI",
+      "description": "Ask the AI Task entity to diagnose a smart home issue and propose fixes (AI Fix). It only proposes: an administrator applies a proposal in the Homeboard panel. Needs AI Fix switched on in the options.",
+      "fields": {
+        "issue": {
+          "name": "Issue",
+          "description": "Issue key (HOME-12) or id. Leave empty when you use project + dedupe key."
+        },
+        "project": {
+          "name": "Project",
+          "description": "Project key or id. Needed together with the dedupe key."
+        },
+        "dedupe_key": {
+          "name": "Dedupe key",
+          "description": "Find the issue by the dedupe key it was created with (newest open issue of the project)."
+        },
+        "note": {
+          "name": "Hint",
+          "description": "Something the AI should know (max 500 characters)."
         }
       }
     },

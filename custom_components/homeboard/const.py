@@ -107,6 +107,7 @@ CONF_HEALTH_MAX_OPEN: Final = "health_max_open"
 CONF_HEALTH_EXCLUDE_ENTITIES: Final = "health_exclude_entities"
 CONF_HEALTH_EXCLUDE_INTEGRATIONS: Final = "health_exclude_integrations"
 CONF_HEALTH_NOISY_DEVICES: Final = "health_noisy_devices"
+CONF_HEALTH_AUTOMATIONS: Final = "health_automations"
 
 DEFAULT_HEALTH_UNAVAILABLE_MINUTES: Final = 60
 DEFAULT_HEALTH_BATTERY_THRESHOLD: Final = 20
@@ -164,6 +165,27 @@ DEFAULT_AUTO_ARCHIVE_DAYS: Final = 30
 DEFAULT_PANEL_TITLE: Final = "Board"
 DEFAULT_PANEL_ICON: Final = "mdi:view-column"
 
+# --- AI Fix (docs/DESIGN-0.3.md) ---------------------------------------------
+CONF_AI_FIX_ENABLED: Final = "ai_fix_enabled"
+CONF_AI_FIX_ENTITY: Final = "ai_fix_entity"
+CONF_AI_FIX_ALLOW_PROTECTED: Final = "ai_fix_allow_protected"
+CONF_AI_FIX_DAILY_LIMIT: Final = "ai_fix_daily_limit"
+DEFAULT_AI_FIX_DAILY_LIMIT: Final = 20
+BACKUP_DIR: Final = "homeboard_backups"
+# Domains whose automations the AI may explain but Homeboard never rewrites (unless the owner allows it).
+PROTECTED_DOMAINS: Final = frozenset({"alarm_control_panel", "siren", "lock", "valve", "alarmo"})
+AI_FIX_KINDS: Final = (
+    "automation_edit",
+    "automation_disable",
+    "reload_integration",
+    "manual_steps",
+)
+AI_MAX_PROPOSALS: Final = 3
+AI_MAX_RECORDS: Final = 50
+AI_NOTE_MAX: Final = 500
+AI_CONTEXT_CHARS: Final = 24_000
+AI_TIMEOUT_SECONDS: Final = 240
+
 # --- frontend --------------------------------------------------------------
 PANEL_URL_PATH: Final = "homeboard"
 STATIC_URL_BASE: Final = "/homeboard_static"
@@ -187,6 +209,9 @@ EVENT_WIP_EXCEEDED: Final = f"{DOMAIN}_wip_exceeded"
 EVENT_PROJECT_CHANGED: Final = f"{DOMAIN}_project_changed"
 EVENT_ATTACHMENT_ADDED: Final = f"{DOMAIN}_attachment_added"
 EVENT_ATTACHMENT_REMOVED: Final = f"{DOMAIN}_attachment_removed"
+EVENT_AI_PROPOSAL_READY: Final = f"{DOMAIN}_ai_proposal_ready"
+EVENT_AI_FIX_APPLIED: Final = f"{DOMAIN}_ai_fix_applied"
+EVENT_AI_FIX_UNDONE: Final = f"{DOMAIN}_ai_fix_undone"
 
 # --- services --------------------------------------------------------------
 SERVICE_CREATE_ISSUE: Final = "create_issue"
@@ -213,3 +238,4 @@ SERVICE_ATTACH_CAMERA_SNAPSHOT: Final = "attach_camera_snapshot"
 SERVICE_SUGGEST: Final = "suggest"
 SERVICE_SEND_DIGEST: Final = "send_digest"
 SERVICE_FORGET_LEARNING: Final = "forget_learning"
+SERVICE_AI_ANALYZE: Final = "ai_analyze"

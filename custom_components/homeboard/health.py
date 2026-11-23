@@ -38,6 +38,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_HEALTH_ASSIGNEE,
+    CONF_HEALTH_AUTOMATIONS,
     CONF_HEALTH_BATTERY,
     CONF_HEALTH_BATTERY_THRESHOLD,
     CONF_HEALTH_ENABLED,
@@ -67,6 +68,7 @@ from .const import (
     HEALTH_REVIEW_KEY,
     HEALTH_STARTUP_GRACE_MINUTES,
     PRIORITIES,
+    PROTECTED_DOMAINS,
 )
 from .data import UNSET, HomeboardData
 from .learning import fmt_minutes
@@ -603,6 +605,57 @@ async def collect_repairs(ctx: _Context) -> list[Finding]:
     return findings
 
 
+def collect_automations(ctx: _Context) -> list[Finding]:
+    """Enabled automations that use entities which no longer exist (opt-in).
+
+    Home Assistant raises a repair when an automation fails validation or calls a missing service, but it
+    does not notice an automation that silently points at a deleted or renamed entity. Automations that are
+    switched off, and entities that are excluded in the options, are left alone.
+    """
+    try:
+        from homeassistant.components.automation import entities_in_automation
+    except ImportError:  # pragma: no cover - a Home Assistant without the automation integration
+        return []
+    hass = ctx.hass
+    findings = []
+    for state in hass.states.async_all("automation"):
+        if state.state != STATE_ON:
+            continue
+        refs = sorted(set(entities_in_automation(hass, state.entity_id)))
+        missing = [
+            ref for ref in refs if hass.states.get(ref) is None and ref not in ctx.excluded_entities
+        ]
+        if not missing:
+            continue
+        lines = []
+        for ref in missing:
+            entry = ctx.entities.async_get(ref)
+            lines.append(
+                f"`{ref}` ({'disabled' if entry and entry.disabled_by else 'does not exist'})"
+            )
+        name = state.attributes.get("friendly_name") or state.entity_id
+        protected = any(ref.split(".", 1)[0] in PROTECTED_DOMAINS for ref in refs)
+        findings.append(
+            Finding(
+                key=f"{KEY_PREFIX}automation:{state.entity_id}",
+                detector="automation",
+                summary=f'Automation "{name}" uses {len(missing)} missing '
+                + ("entity" if len(missing) == 1 else "entities"),
+                description=(
+                    f"The automation `{state.entity_id}` refers to entities that Home Assistant "
+                    f"does not have right now, so parts of it cannot work:\n\n"
+                    + _listing(lines)
+                    + "\n\nUse *Analyse with AI* on this issue for a proposed fix, or edit the "
+                    "automation yourself." + FOOTER
+                ),
+                priority="high" if protected else "medium",
+                labels=["auto", "automation"] + (["security"] if protected else []),
+                fingerprint=tuple(missing),
+            )
+        )
+    return findings
+
+
 def collect_updates(ctx: _Context) -> list[Finding]:
     """One grouped issue listing every pending update (opt-in)."""
     lines = []
@@ -721,6 +774,8 @@ class HealthMonitor:
             findings += collect_integrations(ctx)
         if _bool_option(options, CONF_HEALTH_REPAIRS, True):
             findings += await collect_repairs(ctx)
+        if _bool_option(options, CONF_HEALTH_AUTOMATIONS, False):
+            findings += collect_automations(ctx)
         if _bool_option(options, CONF_HEALTH_UPDATES, False):
             findings += collect_updates(ctx)
         learning = self.manager.learning

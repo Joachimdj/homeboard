@@ -109,3 +109,52 @@ Open questions for the backend
 2. Does the upload response carry `url` and `thumb_url` (signed) like the detail does? The frontend refetches the
    detail after every upload anyway.
 3. `suggestion.similar[].status` is shown as the status name.
+
+## 0.3 AI Fix (PROTOCOL section 11): assumptions and choices
+
+Files: `static/ai-fix.js` (pure logic), `ai-fix-view.js` (vnode builders, no state), `ai-fix-section.js` (state and
+calls, used by `issue-dialog.js`), the `aiChip` in `components.js`, `actions.ai*`, CSS in `styles.js`. Harness:
+`tests/browser/mock-ai.js`.
+
+- **Who sees what.** The dialog section needs `settings.ai_fix.enabled === true`, `is_admin` and an existing issue; it is shown
+  for every issue, not only `source: "health"` (the contract does not restrict `ai/analyze`; filter on `issue.source` in
+  `AiFixSection.enabled` if that is wanted). Cards and rows show the chip from `issue.ai` alone, so non-admins see nothing.
+- **When `ai/get` is fetched.** On open, when the dialog moves to another issue, and whenever `issue.ai.rev` or
+  `settings.ai_fix.entity` changes in the push; also after any failed AI call (to see the truth again). There is no polling.
+  Consequence: `ready` / `reason` / `limit` are only as fresh as the last fetch. If the daily limit is used up by an analysis of
+  another issue while a dialog stays open, the dialog learns it from the `ai_limit` error. If that should show at once, the
+  backend would have to bump `rev` of every record (or the frontend refetch on focus).
+- **While `state === "running"`** only the spinner is shown, any proposals of an older record are hidden. This assumes a new
+  analysis replaces the record (and with it the chance to undo an earlier apply).
+- **Buttons per proposal** (`proposalActions`): Apply only for the four known kinds and not when `blocked`; Dismiss for every
+  `proposed` one (also blocked); Undo only when `undoable === true`; Copy YAML when `new_yaml` is set and the status is
+  `proposed` or `failed`. A dismissed or undone proposal drops to title, explanation and a state line.
+- **Apply is two-step** (confirm row, Escape cancels it) except `manual_steps` ("Add to checklist"): that is one press, because
+  the confirm text (backup, undo) would not be true for it. The confirm text differs per kind (edit, disable, reload).
+- **Only one AI call at a time**: while analyse, preview, apply, undo or dismiss runs, all of those buttons are disabled; the
+  pressed one shows a spinner (analyse and preview can take up to a minute). After `ai/analyze` returns, the section shows
+  "running" at once and the push with the new `rev` brings the real record.
+- **Preview** is dropped when the note is edited (it would no longer be what is sent) and when an analysis starts. The note
+  stays in the box after sending; the record's `note` is shown as "Your note: ...".
+- **Reasons**: `disabled`, `no_entity`, `choose_entity`, `unsupported`, `limit` have their own text; any other value, and
+  `ready: false` with `reason: null` while nothing is running, gives "AI Fix is not ready." (never an empty line).
+- **Errors**: the codes `ai_disabled`, `ai_unavailable`, `ai_limit`, `ai_busy`, `not_applied` get translated texts, anything else
+  (`blocked`, `not_found`, ...) shows the server's message. Shown in the section and as an error toast.
+- **After apply or undo** the dialog refetches `issue/get` (comment, activity, and the checklist items of `manual_steps`).
+  Adding the steps to the checklist is assumed to be done by the backend as part of `ai/apply`.
+- **Copy YAML** uses `navigator.clipboard` and falls back to `document.execCommand("copy")`, because the clipboard API does not
+  exist on a Home Assistant served over plain http (the common case on a LAN address).
+- **Untrusted text**: titles, explanations, warnings, steps, diff, error, prompt, entity name are only ever child strings
+  (text nodes); risk, kind, status and confidence are mapped through fixed lists before they reach a class name or a text key.
+  `tests/js/ai-fix-view.test.js` renders a payload full of `<img onerror>` through the real `patch()` and a small fake DOM and
+  checks that no element, event attribute or attribute value carries it, and that the AI modules never use `innerHTML`.
+- **Harness**: admin user = the existing "Admin" box. Seeded records: FIX-2 ready (edit with diff, manual steps, blocked
+  protected one), FIX-6 ready (reload, plus an applied and undoable disable), FIX-1 failed, FIX-3 running, FIX-4 / FIX-5 none.
+  New controls: AI Fix on/off, a state select (limit, no entity, choose entity, unsupported, unknown reason), "calls fail", "slow
+  preview / analyse"; query params `aireason=limit` and `aislow`. `ai/analyze` answers after 1.5 s (`backend.ai.delay`).
+
+Open questions for the backend
+1. Does `rev` change when only `ready` / `reason` / `limit` change (see above)?
+2. Does a new analysis keep earlier applied proposals so that Undo stays possible?
+3. Can `record.proposals` be non-empty while `state` is `failed`? (They would be listed below the error.)
+4. Is `entity_name` always set when `entity` is? (Falls back to the entity id, then to "your AI Task entity".)

@@ -31,6 +31,9 @@ Everything runs inside Home Assistant: no server, no cloud, no extra add-on.
 - **Recurring chores**: "put out the bins every Wednesday", "pay rent on the 1st", created ahead of time.
 - **Smart-home health**: issues for offline devices, low batteries, Home Assistant repairs and
   failing integrations, closed again when the fault is gone ([details](#smart-home-health)).
+- **AI Fix** (opt-in): an AI diagnoses a smart-home issue and proposes a fix, for example a corrected
+  automation. It only proposes: you review the change, press Apply, and can undo it
+  ([how it works](#ai-fix)).
 - **Checklists and photos**: subtasks on every issue, photos and PDFs on issues (also straight from a
   camera snapshot), stored privately.
 - **Push to the right person**: assigned to you, comments, deadlines, a morning digest, on your own
@@ -338,6 +341,7 @@ home fixes", created on demand) up to date:
 | Integration problems | a config entry fails to load or keeps retrying, or waits for a new sign-in | medium, sign-in high |
 | Repairs | a Home Assistant repair is open | by severity |
 | Updates (off by default) | one grouped issue listing pending updates | low |
+| Automations (off by default) | an enabled automation uses entities that no longer exist ([AI Fix](#ai-fix) can propose the repair) | medium, high when it involves the alarm |
 
 Rules that keep it calm:
 
@@ -361,6 +365,54 @@ what would be created without changing anything. A manual scan (without dry run)
 Switch the whole thing off, exclude entities and integrations, or also report the normally-off devices
 (TVs, bulbs, phones, robot mowers) in **Configure > Smart home health**.
 
+## AI Fix
+
+Open a smart-home issue (for example one the health scanner made), press **Analyse with AI**, and an AI
+tells you what is probably wrong and proposes up to three fixes:
+
+| Proposal | What *Apply* does | Undo |
+|----------|------------------|------|
+| Edit an automation | replaces that automation in `automations.yaml` (shown as a diff first) | yes |
+| Disable an automation | switches it off | yes |
+| Reload an integration | reloads a config entry that failed to set up | no |
+| Manual steps | adds the steps (replace the battery, re-pair ...) to the issue's checklist | no |
+
+It uses the **AI Task** entity of Home Assistant that you already have (Anthropic, OpenAI, Google, Ollama, ...),
+so Homeboard needs no API key. Switch it on and pick the entity in **Configure > AI Fix**.
+
+How it stays safe:
+
+- **The AI only proposes.** Nothing changes until an administrator presses *Apply*. There is no service or
+  automation that applies a proposal.
+- **Backup and undo.** Before an automation is rewritten, `automations.yaml` is copied to
+  `config/homeboard_backups/`. After the change Homeboard checks that the automation loads; if not, it puts the
+  old one back by itself. *Undo* restores just that automation.
+- **Only what it was shown.** The AI may only touch the automations and integrations Homeboard listed in the
+  question. Anything else it names is thrown away. A proposed automation must pass Home Assistant's own
+  validation and may not use entities that do not exist.
+- **Hands off the alarm.** Automations that control `alarm_control_panel`, `siren`, `lock`, `valve` or Alarmo can
+  be analysed (you get the corrected YAML to copy) but Homeboard will not write them, unless you allow it in the
+  options. The check is wide: it also catches upper case, devices / areas / labels / groups that contain such an
+  entity, and anything it cannot read from the config (templated services or targets, `entity_id: all`, scripts and
+  scenes), and it runs again when you press Apply.
+- **Stale proposals are refused.** If the automation changed after the analysis, Apply refuses; analyse again.
+  Undo likewise refuses to overwrite something you edited after the fix (the backup copy is named in the message).
+  A change too large to show completely in the diff is blocked too: you always see everything that would change.
+- **You can see what is sent.** *Show what is sent* displays the exact text before anything leaves Home Assistant:
+  the issue, the automation, the entities involved and look-alike replacements. Values from `secrets.yaml` and keys
+  named `password`, `token`, `api_key`, `code`, `webhook_id` ... are replaced by placeholders and put back when
+  you apply. Error messages are cleaned the same way. Secrets shorter than 4 characters are not masked. The text goes to the AI Task entity you chose, which may be a cloud service.
+- **Cheap by default.** One analysis at a time, at most 20 per day (change it in the options), only when you press
+  the button or call `homeboard.ai_analyze`.
+
+The new detector **Automations that use entities that no longer exist** (Configure > Smart home health, off by
+default) makes an issue for each enabled automation that points at a deleted or renamed entity, which Home
+Assistant itself never reports. Try it with `homeboard.scan_health` and `dry_run: true` first.
+
+Limits: only UI automations (`automations.yaml`) can be written; YAML-mode automations and scripts are
+explained but not edited. `!secret` and `!include` tags are written back as plain values, exactly as Home
+Assistant's own automation editor does.
+
 ## Entities
 
 | Entity | What |
@@ -378,7 +430,7 @@ Switch the whole thing off, exclude entities and integrations, or also report th
 
 **Settings > Devices & services > Homeboard > Configure** is a menu of short sections: general (due-soon
 window, auto-archive, checklist auto-done, sidebar title / icon / admin only, people with sensors),
-household alerts, people and push, photos / files / Assist, smart-home health, and learning.
+household alerts, people and push, photos / files / Assist, smart-home health, AI Fix, and learning.
 Each section saves when you submit it.
 
 ## Troubleshooting
