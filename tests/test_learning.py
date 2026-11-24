@@ -544,3 +544,27 @@ async def test_the_longest_quiet_spell_is_only_remembered_for_two_weeks(
     hass.states.async_set(entity_id, "99", attrs)
     manager.learning.sample()
     assert stats[entity_id]["peak"] > 15 * 24 * 60 - 1  # the old peak is replaced by this gap
+
+
+async def test_a_silent_sensor_on_a_security_device_is_never_urgent(hass, manager, broken, freezer):
+    freezer.move_to("2026-12-01 08:00:00+01:00")
+    device_id, entity_id = make_sensor(hass, broken, "Back door")
+    er.async_get(hass).async_get_or_create(
+        "binary_sensor",
+        "fake",
+        "Back door-contact",
+        device_id=device_id,
+        config_entry=broken,
+        suggested_object_id="back_door_contact",
+        original_device_class="door",
+    )
+    hass.states.async_set("binary_sensor.back_door_contact", "off", {"device_class": "door"})
+    manager.learning.sample()
+    for step in range(1, 16):
+        freezer.tick(timedelta(minutes=15))
+        hass.states.async_set(entity_id, str(20 + step % 3), {"state_class": "measurement"})
+        manager.learning.sample()
+    freezer.tick(timedelta(hours=5))
+    [finding] = [f for f in await manager.health.async_collect() if f.detector == "silent"]
+    # a learned guess, not a measured fault: no push, no "security" label
+    assert finding.priority == "medium" and finding.labels == ["auto", "silent"]

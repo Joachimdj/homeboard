@@ -106,6 +106,12 @@ open auto issues, highest priority first; device findings are replaced by the in
 when the whole integration is down. Security devices (doors, windows, motion, smoke, gas, water,
 tamper, locks, cameras, alarm panels) get priority `high` and label `security`.
 
+**Notifications.** Comments made by the scanner (`source = "health"`: "Problem is back.", "Resolved automatically...")
+are never pushed to the assignee / reporter, and `notify_done` skips completions made by the scanner (`source = "health"`).
+The optional `notify_health` push for a new `high` / `highest` auto issue is sent 30 minutes after creation, and only if the
+issue is still open and not archived then (constant `HEALTH_PUSH_SETTLE_MINUTES`); timers are dropped on unload.
+`silent` findings are always `medium` without the `security` label.
+
 **Patience.** Devices that answer once a day, or go offline for hours and come back, would open and close
 a card again and again. When an `offline` or `silent` card closes by itself, Homeboard remembers how long the fault lasted
 (`learning.health.patience[<dedupe_key>] = {minutes, n, last}`, kept 90 days, only outages up to 2 days count). The same

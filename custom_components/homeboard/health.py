@@ -586,18 +586,16 @@ def collect_silent(ctx: _Context, learning: Any) -> list[Finding]:
             f"silent for {fmt_minutes(c['silent_minutes'])}"
             for e, c in items
         ]
-        security = ctx.is_security(
-            _device_pairs(ctx, device)
-            or [(first_entry, ctx.hass.states.get(first_entry.entity_id))]
-        )
         findings.append(
             Finding(
                 key=key,
                 detector="silent",
                 summary=f"{name} stopped reporting",
                 description=_listing(lines) + FOOTER,
-                priority="high" if security else "medium",
-                labels=["auto", "silent"] + (["security"] if security else []),
+                # A guess from a learned rhythm, not a measured fault: never a push, even on a
+                # door sensor (a dead one is caught by the offline and battery detectors).
+                priority="medium",
+                labels=["auto", "silent"],
                 fingerprint=tuple(sorted(e.entity_id for e, _ in items)),
                 since=now - timedelta(minutes=quiet),
             )

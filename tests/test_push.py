@@ -90,6 +90,21 @@ async def test_comment_goes_to_assignee_and_reporter_but_not_the_author(hass, se
     ]
 
 
+async def test_the_scanners_own_comments_are_not_pushed(hass, sent, freezer):
+    freezer.move_to(NOON)
+    manager = await boot(hass, **mapping())
+    issue, _ = manager.create_issue(
+        "HOME", "Gate is offline", assignee="person.joachim", source="health"
+    )
+    manager.resolve_automatically(issue["id"], "Resolved automatically: no longer detected.")
+    manager.reopen_automatically(issue["id"], "Problem is back.")
+    await hass.async_block_till_done()
+    assert sent == []
+    manager.add_comment(issue["id"], "Looked at it", actor="person.padmaja")  # people still count
+    await hass.async_block_till_done()
+    assert [c.service for c in sent] == ["mobile_app_joachim_phone"]
+
+
 async def test_deadlines_and_reporter_done(hass, sent, freezer):
     freezer.move_to(NOON)
     manager = await boot(hass, **mapping())

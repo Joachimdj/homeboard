@@ -4,6 +4,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Versions follo
 [Semantic Versioning](https://semver.org/); while the project is 0.x only the patch number is bumped
 for small changes.
 
+## [0.4.2] - 2026-11-24
+
+### Fixed
+- **No more "found a fault" / "no problem after all" pushes.** Cards the health scanner makes are assigned to a person,
+  and the scanner's own comments ("Problem is back.", "Resolved automatically: the problem is no longer detected.")
+  were pushed to that person like a colleague's comment, one pair for every device that blinked. They are not pushed
+  any more, and a fault the scanner closes by itself no longer sends the optional "Done" push either (a person closing
+  it still does).
+- The optional push for a new serious smart-home fault (*Alerts > new auto issues*) now waits 30 minutes and is only
+  sent if the issue is still open then. A pending push is dropped when the integration is unloaded.
+- "Stopped reporting" is a guess from a learned rhythm, not a measured fault: it is never `high` any more and no longer
+  gets the `security` label (so it never pushes or skips quiet hours), even for a sensor on a door or window device.
+  Dead security devices are still caught by the offline and battery detectors.
+
 ## [0.4.1] - 2026-11-23
 
 ### Fixed

@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 from homeassistant.core import ServiceCall
 from homeassistant.exceptions import HomeAssistantError
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from homeassistant.util import dt as dt_util
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+)
 
 from custom_components.homeboard.const import CONF_STARTER_PROJECT, DOMAIN
 
@@ -19,6 +25,12 @@ async def setup_with(hass, **options):
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     return entry.runtime_data
+
+
+async def settle(hass, minutes=31):
+    """Let the time a new fault waits before it is pushed pass."""
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=minutes))
+    await hass.async_block_till_done()
 
 
 @pytest.fixture
@@ -86,6 +98,7 @@ async def test_new_high_priority_auto_issues_notify_but_other_creations_do_not(h
     manager.create_issue("HOME", "Auto low", priority="low", source="health")
     manager.create_issue("HOME", "Auto high", priority="high", source="health")
     await hass.async_block_till_done()
+    await settle(hass)
     assert [c.data["message"] for c in sent] == ["Auto high"]
     assert sent[0].data["title"] == "Needs attention: HOME-3"
 
@@ -100,3 +113,39 @@ async def test_a_failing_notify_service_is_logged_not_raised(hass, caplog):
     manager.move_issue(issue["id"], "Done")
     await hass.async_block_till_done()
     assert "Could not send notification through notify.mobile_app_phone" in caplog.text
+
+
+async def test_a_new_fault_is_pushed_only_if_it_is_still_open_after_the_settling_time(hass, sent):
+    manager = await setup_with(hass, notify_services=["mobile_app_phone"], notify_health=True)
+    gone, _ = manager.create_issue("HOME", "Blinked", priority="high", source="health")
+    deleted, _ = manager.create_issue("HOME", "Removed", priority="high", source="health")
+    stays, _ = manager.create_issue("HOME", "Stays", priority="high", source="health")
+    await settle(hass, 29)
+    assert sent == []  # nothing before the time is up
+    manager.resolve_automatically(gone["id"], "Resolved automatically")
+    manager.delete_issue(deleted["id"])
+    await settle(hass, 31)
+    assert [c.data["message"] for c in sent] == ["Stays"] and stays["key"] in sent[0].data["title"]
+    await settle(hass, 120)
+    assert len(sent) == 1  # once only
+
+
+async def test_a_pending_fault_push_is_dropped_when_the_integration_unloads(hass, sent):
+    manager = await setup_with(hass, notify_services=["mobile_app_phone"], notify_health=True)
+    manager.create_issue("HOME", "Late", priority="high", source="health")
+    [entry] = hass.config_entries.async_entries(DOMAIN)
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await settle(hass)
+    assert sent == []
+
+
+async def test_the_scanner_closing_a_fault_is_not_announced_but_a_person_closing_it_is(hass, sent):
+    manager = await setup_with(hass, notify_services=["mobile_app_phone"], notify_done=True)
+    auto, _ = manager.create_issue("HOME", "Went away", source="health")
+    manager.resolve_automatically(auto["id"], "Resolved automatically")
+    await hass.async_block_till_done()
+    assert sent == []
+    mine, _ = manager.create_issue("HOME", "Fixed by me", source="health")
+    manager.move_issue(mine["id"], "Done", actor="person.joachim", source="ui")
+    await hass.async_block_till_done()
+    assert [c.data["message"] for c in sent] == ["Fixed by me"]

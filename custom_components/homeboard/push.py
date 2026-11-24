@@ -153,6 +153,8 @@ class PushNotifier:
     @callback
     def _on_commented(self, event: Event) -> None:
         data = event.data
+        if data.get("source") == "health":
+            return  # "Problem is back." / "Resolved automatically": the scanner talking to itself
         text = (data.get("comment") or {}).get("text", "")
         for person in {data.get("assignee"), data.get("reporter")} - {None, data.get("actor")}:
             who = self._name(data.get("actor")) if data.get("actor") else "New comment"

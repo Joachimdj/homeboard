@@ -119,6 +119,8 @@ HEALTH_PROJECT_NAME: Final = "Smart home fixes"
 HEALTH_STARTUP_GRACE_MINUTES: Final = 10
 HEALTH_DEBOUNCE_SCANS: Final = 2
 HEALTH_REOPEN_COOLDOWN_MINUTES: Final = 30
+HEALTH_PUSH_SETTLE_MINUTES: Final = 30
+"""A new smart-home fault is pushed to the phone only if it is still open this long after it was created."""
 HEALTH_PATIENCE_FACTOR: Final = 1.5
 """A fault that went away by itself is reported only after 1.5 x its longest such episode."""
 HEALTH_PATIENCE_LEARN_MAX_MINUTES: Final = 2 * 24 * 60

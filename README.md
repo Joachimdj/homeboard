@@ -172,6 +172,11 @@ Each Home Assistant person is notified on their own phone, detected from their `
 | an issue you reported is done (by someone else) | `push_reported_done` |
 | every morning: your open and overdue issues (off by default) | `digest_enabled`, `digest_time` |
 
+Smart-home faults that Homeboard finds by itself never push a comment: its own notes "Problem is back." and
+"Resolved automatically" are not news, and a fault the scanner closes by itself is not announced as "Done".
+The push for a new serious fault (*Configure > Alerts > new auto issues*) goes out 30 minutes after the issue was
+created and only if it is still open then, so a device that blinks off and on does not wake anyone.
+
 Pushes that are not urgent wait during **quiet hours** (22:00-07:00 by default) and, if rhythm learning is
 on, while you are away; they arrive together afterwards (more than 3 become one "N updates" push). Priority
 `highest` and the label `security` always go straight through. `homeboard.send_digest` sends a digest now
